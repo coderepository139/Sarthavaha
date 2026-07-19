@@ -1,0 +1,6 @@
+{
+  "name": "Sarthavaha",
+  "description": "An AI-powered marketing dashboard featuring research, creative ad generation, visual optimization, mock Google Ads & Facebook integration, secure user auth with roles, and billing tier management.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

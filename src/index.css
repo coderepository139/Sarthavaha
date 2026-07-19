@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@400;500;700;900&family=Syncopate:wght@700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Syncopate", sans-serif;
+  --font-orbitron: "Orbitron", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #020617;
+  color: #e2e8f0;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* ==================== ALPINE WHITE THEME OVERRIDES ==================== */
+.theme-white {
+  background-color: #f8fafc !important;
+  color: #1e293b !important;
+}
+
+.theme-white h1, 
+.theme-white h2, 
+.theme-white h3, 
+.theme-white h4, 
+.theme-white h5, 
+.theme-white h6 {
+  color: #0f172a !important;
+}
+
+.theme-white p,
+.theme-white span:not(.font-black):not(.font-orbitron):not(.tracking-widest):not(.text-cyan-450):not(.text-cyan-400):not(.text-purple-400):not(.text-purple-300):not(.text-emerald-400):not(.text-rose-400):not(.text-amber-400),
+.theme-white div:not(.bg-purple-600):not(.bg-gradient-to-r) > span {
+  color: #334155 !important;
+}
+
+.theme-white aside {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.theme-white header {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+.theme-white main {
+  background-color: #f8fafc !important;
+}
+
+.theme-white .bg-slate-950,
+.theme-white .bg-slate-950\/90,
+.theme-white .bg-slate-950\/80,
+.theme-white .bg-slate-950\/60,
+.theme-white .bg-slate-950\/40,
+.theme-white .bg-slate-900,
+.theme-white .bg-slate-900\/40,
+.theme-white .bg-slate-900\/50,
+.theme-white .bg-slate-900\/60,
+.theme-white .bg-slate-900\/80,
+.theme-white .bg-[#020617],
+.theme-white .bg-[#020617]\/70,
+.theme-white .bg-[#030712] {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02), 0 1px 2px -1px rgba(0, 0, 0, 0.02) !important;
+}
+
+.theme-white .border-slate-800,
+.theme-white .border-slate-850,
+.theme-white .border-slate-900,
+.theme-white .border-slate-900\/60,
+.theme-white .border-slate-950 {
+  border-color: #e2e8f0 !important;
+}
+
+.theme-white input,
+.theme-white textarea,
+.theme-white select {
+  background-color: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.theme-white input::placeholder,
+.theme-white textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Maintain beautiful styling for inputs and panels */
+.theme-white .text-white {
+  color: #0f172a !important;
+}
+
+.theme-white .text-slate-400 {
+  color: #475569 !important;
+}
+
+.theme-white .text-slate-500 {
+  color: #64748b !important;
+}
+
+.theme-white .text-slate-300 {
+  color: #334155 !important;
+}
+
+.theme-white .text-slate-200 {
+  color: #1e293b !important;
+}
+
+.theme-white .bg-slate-950\/40 {
+  background-color: #f8fafc !important;
+}
+
