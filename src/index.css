@@ -1,72 +1,312 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@400;500;700;900&family=Syncopate:wght@700&display=swap');
 @import "tailwindcss";
 
+/*
+  Sarthavaha design tokens — "indigo dye & marigold".
+  A sārthavāha leads a merchant caravan along a trade route; the palette
+  borrows the two colours of that world: indigo-dyed cloth for every surface,
+  marigold for the one thing to act on.
+
+  The app was written against Tailwind's default slate / cyan / purple scales,
+  so the tokens are applied by redefining those scales here. Every existing
+  class picks up the new identity without touching each component.
+*/
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: "Syncopate", sans-serif;
-  --font-orbitron: "Orbitron", sans-serif;
+  --font-sans: "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-orbitron: "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  /* Indigo night — neutrals with a dye-vat tint */
+  --color-slate-50: #f6f5fb;
+  --color-slate-100: #ecebf5;
+  --color-slate-150: #e3e1f0;
+  --color-slate-200: #dad8ea;
+  --color-slate-300: #bdbbd6;
+  --color-slate-400: #9896b8;
+  --color-slate-500: #77759b;
+  --color-slate-600: #57557a;
+  --color-slate-700: #3e3c61;
+  --color-slate-800: #2c2a4c;
+  --color-slate-850: #242242;
+  --color-slate-900: #1e1c3a;
+  --color-slate-950: #15142b;
+
+  /* Marigold — the single accent. Used for cyan, sky, blue, indigo, violet,
+     purple, amber and yellow so the old two-hue neon collapses into one. */
+  --color-marigold-50: #fff8eb;
+  --color-marigold-100: #fdedcb;
+  --color-marigold-150: #fbe3ae;
+  --color-marigold-200: #fad993;
+  --color-marigold-300: #f6c25e;
+  --color-marigold-400: #f2ac36;
+  --color-marigold-450: #eba129;
+  --color-marigold-500: #e5961c;
+  --color-marigold-600: #c47812;
+  --color-marigold-650: #b06a11;
+  --color-marigold-700: #9c5a11;
+  --color-marigold-750: #8b5012;
+  --color-marigold-800: #7a4614;
+  --color-marigold-900: #5f3913;
+  --color-marigold-950: #351e07;
+
+  --color-cyan-50: var(--color-marigold-50);
+  --color-cyan-100: var(--color-marigold-100);
+  --color-cyan-200: var(--color-marigold-200);
+  --color-cyan-300: var(--color-marigold-300);
+  --color-cyan-400: var(--color-marigold-400);
+  --color-cyan-450: var(--color-marigold-450);
+  --color-cyan-500: var(--color-marigold-500);
+  --color-cyan-600: var(--color-marigold-600);
+  --color-cyan-700: var(--color-marigold-700);
+  --color-cyan-800: var(--color-marigold-800);
+  --color-cyan-900: var(--color-marigold-900);
+  --color-cyan-950: var(--color-marigold-950);
+
+  --color-sky-50: var(--color-marigold-50);
+  --color-sky-100: var(--color-marigold-100);
+  --color-sky-200: var(--color-marigold-200);
+  --color-sky-300: var(--color-marigold-300);
+  --color-sky-400: var(--color-marigold-400);
+  --color-sky-500: var(--color-marigold-500);
+  --color-sky-600: var(--color-marigold-600);
+  --color-sky-700: var(--color-marigold-700);
+  --color-sky-800: var(--color-marigold-800);
+  --color-sky-900: var(--color-marigold-900);
+  --color-sky-950: var(--color-marigold-950);
+
+  --color-blue-50: var(--color-marigold-50);
+  --color-blue-100: var(--color-marigold-100);
+  --color-blue-200: var(--color-marigold-200);
+  --color-blue-300: var(--color-marigold-300);
+  --color-blue-400: var(--color-marigold-400);
+  --color-blue-500: var(--color-marigold-500);
+  --color-blue-600: var(--color-marigold-600);
+  --color-blue-700: var(--color-marigold-700);
+  --color-blue-800: var(--color-marigold-800);
+  --color-blue-900: var(--color-marigold-900);
+  --color-blue-950: var(--color-marigold-950);
+
+  --color-indigo-50: var(--color-marigold-50);
+  --color-indigo-100: var(--color-marigold-100);
+  --color-indigo-150: var(--color-marigold-150);
+  --color-indigo-200: var(--color-marigold-200);
+  --color-indigo-300: var(--color-marigold-300);
+  --color-indigo-400: var(--color-marigold-400);
+  --color-indigo-500: var(--color-marigold-500);
+  --color-indigo-600: var(--color-marigold-600);
+  --color-indigo-650: var(--color-marigold-650);
+  --color-indigo-700: var(--color-marigold-700);
+  --color-indigo-750: var(--color-marigold-750);
+  --color-indigo-800: var(--color-marigold-800);
+  --color-indigo-900: var(--color-marigold-900);
+  --color-indigo-950: var(--color-marigold-950);
+
+  --color-violet-50: var(--color-marigold-50);
+  --color-violet-100: var(--color-marigold-100);
+  --color-violet-200: var(--color-marigold-200);
+  --color-violet-300: var(--color-marigold-300);
+  --color-violet-400: var(--color-marigold-400);
+  --color-violet-500: var(--color-marigold-500);
+  --color-violet-600: var(--color-marigold-600);
+  --color-violet-700: var(--color-marigold-700);
+  --color-violet-800: var(--color-marigold-800);
+  --color-violet-900: var(--color-marigold-900);
+  --color-violet-950: var(--color-marigold-950);
+
+  --color-purple-50: var(--color-marigold-50);
+  --color-purple-100: var(--color-marigold-100);
+  --color-purple-200: var(--color-marigold-200);
+  --color-purple-300: var(--color-marigold-300);
+  --color-purple-400: var(--color-marigold-400);
+  --color-purple-500: var(--color-marigold-500);
+  --color-purple-600: var(--color-marigold-600);
+  --color-purple-700: var(--color-marigold-700);
+  --color-purple-800: var(--color-marigold-800);
+  --color-purple-900: var(--color-marigold-900);
+  --color-purple-950: var(--color-marigold-950);
+
+  --color-amber-300: var(--color-marigold-300);
+  --color-amber-400: var(--color-marigold-400);
+  --color-amber-500: var(--color-marigold-500);
+  --color-amber-600: var(--color-marigold-600);
+  --color-yellow-400: var(--color-marigold-400);
+  --color-yellow-500: var(--color-marigold-500);
+
+  /* Verdigris — live, connected, done */
+  --color-emerald-50: #eef9f4;
+  --color-emerald-100: #d5f0e5;
+  --color-emerald-200: #b0e3d0;
+  --color-emerald-300: #8fd8bd;
+  --color-emerald-400: #62c6a3;
+  --color-emerald-500: #3faf8c;
+  --color-emerald-600: #2b8f70;
+  --color-emerald-700: #22705a;
+  --color-emerald-800: #1b5847;
+  --color-emerald-900: #143b30;
+  --color-emerald-950: #0e2a22;
+
+  /* Text that sits on a filled marigold surface */
+  --color-accent-ink: #1b1640;
+
+  --animate-route-draw: route-draw 1.6s cubic-bezier(0.65, 0, 0.35, 1) 0.2s both;
+  --animate-stop-in: stop-in 0.4s ease-out both;
+}
+
+@keyframes route-draw {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes stop-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #020617;
-  color: #e2e8f0;
+  background-color: var(--color-slate-950);
+  color: var(--color-slate-200);
+  font-feature-settings: "ss01";
+}
+
+/* Real code keeps a monospace face; everything else is one family. */
+pre, code, kbd, samp, pre *, code * {
+  font-family: var(--font-code) !important;
+  font-variant-ligatures: none;
+}
+
+/* Figures line up in tables, counters and prices. */
+.font-mono, .tabular, table {
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, h3 {
+  text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+::selection {
+  background: var(--color-marigold-400);
+  color: var(--color-accent-ink);
+}
+
+/* Filled marigold controls get dark ink instead of white for legible contrast. */
+.text-accent-ink,
+.text-accent-ink .text-white {
+  color: var(--color-accent-ink) !important;
+}
+.text-accent-ink .fill-white {
+  fill: var(--color-accent-ink) !important;
+}
+
+/* Primary actions are one flat marigold, not a two-stop gradient. */
+.text-accent-ink[class*="bg-gradient"],
+.text-accent-ink[class*="bg-cyan-"]:not([class*="bg-cyan-500/"]):not([class*="bg-cyan-400/"]),
+.text-accent-ink[class*="bg-indigo-"]:not([class*="bg-indigo-500/"]):not([class*="bg-indigo-600/"]) {
+  background-image: none !important;
+  background-color: var(--color-marigold-400) !important;
+  box-shadow: none !important;
+}
+.text-accent-ink[class*="bg-gradient"]:hover:not(:disabled),
+.text-accent-ink[class*="bg-cyan-"]:hover:not(:disabled),
+.text-accent-ink[class*="bg-indigo-"]:hover:not(:disabled) {
+  background-color: var(--color-marigold-300) !important;
+  filter: none !important;
+}
+.text-accent-ink:disabled {
+  opacity: 0.5;
+}
+
+/* Visible keyboard focus everywhere */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-marigold-400);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+:where(input, textarea, select):focus-visible {
+  outline-offset: 0;
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-slate-800) transparent;
 }
-
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 4px;
+  background: var(--color-slate-800);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background-color: var(--color-slate-700);
 }
 
-/* ==================== ALPINE WHITE THEME OVERRIDES ==================== */
+/* Route — the hero's one orchestrated moment */
+.route-line {
+  transform: scaleY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .route-line {
+    transform: none;
+  }
+}
+
+/* ==================== PARCHMENT (LIGHT) THEME ==================== */
 .theme-white {
-  background-color: #f8fafc !important;
-  color: #1e293b !important;
+  background-color: #f7f5ef !important;
+  color: #2c2a4c !important;
 }
 
-.theme-white h1, 
-.theme-white h2, 
-.theme-white h3, 
-.theme-white h4, 
-.theme-white h5, 
+.theme-white h1,
+.theme-white h2,
+.theme-white h3,
+.theme-white h4,
+.theme-white h5,
 .theme-white h6 {
-  color: #0f172a !important;
+  color: #15142b !important;
 }
 
-.theme-white p,
-.theme-white span:not(.font-black):not(.font-orbitron):not(.tracking-widest):not(.text-cyan-450):not(.text-cyan-400):not(.text-purple-400):not(.text-purple-300):not(.text-emerald-400):not(.text-rose-400):not(.text-amber-400),
-.theme-white div:not(.bg-purple-600):not(.bg-gradient-to-r) > span {
-  color: #334155 !important;
+.theme-white p {
+  color: #3e3c61;
 }
 
 .theme-white aside {
-  background-color: #f1f5f9 !important;
-  border-color: #e2e8f0 !important;
+  background-color: #efece3 !important;
+  border-color: #e2ded2 !important;
 }
 
 .theme-white header {
-  background-color: rgba(255, 255, 255, 0.9) !important;
-  border-color: #e2e8f0 !important;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+  background-color: rgba(247, 245, 239, 0.92) !important;
+  border-color: #e2ded2 !important;
 }
 
 .theme-white main {
-  background-color: #f8fafc !important;
+  background-color: #f7f5ef !important;
 }
 
 .theme-white .bg-slate-950,
@@ -75,60 +315,66 @@ body {
 .theme-white .bg-slate-950\/60,
 .theme-white .bg-slate-950\/40,
 .theme-white .bg-slate-900,
+.theme-white .bg-slate-900\/30,
 .theme-white .bg-slate-900\/40,
 .theme-white .bg-slate-900\/50,
 .theme-white .bg-slate-900\/60,
-.theme-white .bg-slate-900\/80,
-.theme-white .bg-[#020617],
-.theme-white .bg-[#020617]\/70,
-.theme-white .bg-[#030712] {
+.theme-white .bg-slate-900\/80 {
   background-color: #ffffff !important;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.02), 0 1px 2px -1px rgba(0, 0, 0, 0.02) !important;
 }
 
+.theme-white .bg-slate-800,
+.theme-white .bg-slate-800\/50 {
+  background-color: #ece9df !important;
+}
+
+.theme-white .border-slate-700,
 .theme-white .border-slate-800,
+.theme-white .border-slate-800\/60,
 .theme-white .border-slate-850,
 .theme-white .border-slate-900,
 .theme-white .border-slate-900\/60,
 .theme-white .border-slate-950 {
-  border-color: #e2e8f0 !important;
+  border-color: #e2ded2 !important;
 }
 
 .theme-white input,
 .theme-white textarea,
 .theme-white select {
-  background-color: #f8fafc !important;
-  border-color: #cbd5e1 !important;
-  color: #0f172a !important;
+  background-color: #fbfaf6 !important;
+  border-color: #d6d1c3 !important;
+  color: #15142b !important;
 }
 
 .theme-white input::placeholder,
 .theme-white textarea::placeholder {
-  color: #94a3b8 !important;
+  color: #8d8aa8 !important;
 }
 
-/* Maintain beautiful styling for inputs and panels */
-.theme-white .text-white {
-  color: #0f172a !important;
+.theme-white .text-white { color: #15142b !important; }
+.theme-white .text-slate-200 { color: #24223f !important; }
+.theme-white .text-slate-300 { color: #3e3c61 !important; }
+.theme-white .text-slate-400 { color: #57557a !important; }
+.theme-white .text-slate-500 { color: #6a6890 !important; }
+
+/* Marigold text needs its deeper shade to read on paper. */
+.theme-white .text-cyan-300, .theme-white .text-cyan-400, .theme-white .text-cyan-500,
+.theme-white .text-purple-300, .theme-white .text-purple-400, .theme-white .text-purple-500,
+.theme-white .text-indigo-300, .theme-white .text-indigo-400, .theme-white .text-indigo-500,
+.theme-white .text-sky-400, .theme-white .text-amber-400, .theme-white .text-amber-500 {
+  color: var(--color-marigold-700) !important;
+}
+.theme-white .text-emerald-400 { color: var(--color-emerald-700) !important; }
+
+/* Keep filled accent controls legible in light mode too. */
+.theme-white .text-accent-ink,
+.theme-white .text-accent-ink .text-white {
+  color: var(--color-accent-ink) !important;
 }
 
-.theme-white .text-slate-400 {
-  color: #475569 !important;
+/* Dark gradient panels become plain paper in light mode. */
+.theme-white [class*="bg-gradient-to"][class*="from-slate-9"],
+.theme-white [class*="bg-gradient-to"][class*="from-slate-8"] {
+  background-image: none !important;
+  background-color: #ffffff !important;
 }
-
-.theme-white .text-slate-500 {
-  color: #64748b !important;
-}
-
-.theme-white .text-slate-300 {
-  color: #334155 !important;
-}
-
-.theme-white .text-slate-200 {
-  color: #1e293b !important;
-}
-
-.theme-white .bg-slate-950\/40 {
-  background-color: #f8fafc !important;
-}
-

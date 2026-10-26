@@ -44,7 +44,14 @@ export interface User {
   googleAdsApiKey?: string;
   imageGenApiKey?: string;
   videoGenApiKey?: string;
+  phoneNumber?: string;
+  signupMethod?: 'google' | 'phone' | 'email';
+  signupSource?: string;
+  signupMedium?: string;
+  signupCampaign?: string;
 }
+
+export type SignupDetails = Pick<User, 'phoneNumber' | 'signupMethod' | 'signupSource' | 'signupMedium' | 'signupCampaign'>;
 
 export interface PlatformConfig {
   facebookApiKey: string;
@@ -90,9 +97,15 @@ const DEFAULT_CONFIG: PlatformConfig = {
 };
 
 // Seed administrative user details
-const ADMIN_EMAIL = 'admin@marketing.ai';
-const DEFAULT_ADMIN_PASSWORD = 'adminpassword123';
-const ADMIN_PASSWORD_HASH = crypto.createHash('sha256').update(DEFAULT_ADMIN_PASSWORD).digest('hex');
+// The admin account is configured from the environment. The repository used to
+// ship a fixed default password; that password is now refused at login
+// (see LEGACY_DEFAULT_ADMIN_HASH in server.ts). Without ADMIN_PASSWORD set, the
+// seeded admin gets a random password nobody knows, so it cannot be used to sign in.
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@sarthavaha.com').toLowerCase();
+const ADMIN_PASSWORD_HASH = crypto
+  .createHash('sha256')
+  .update(process.env.ADMIN_PASSWORD || crypto.randomBytes(32).toString('hex'))
+  .digest('hex');
 
 const localDbPath = path.join(process.cwd(), 'data.json');
 
@@ -318,7 +331,9 @@ class Database {
     );
   }
 
-  public async createUserWithId(id: string, email: string, role: 'admin' | 'user' = 'user'): Promise<User> {
+  public async createUserWithId(id: string, email: string, role: 'admin' | 'user' = 'user', details: SignupDetails = {}): Promise<User> {
+    // Firestore rejects undefined values, so only copy the details that are set.
+    const extras = Object.fromEntries(Object.entries(details).filter(([, v]) => v !== undefined && v !== '')) as SignupDetails;
     const newUser: User = {
       id,
       email: email.toLowerCase(),
@@ -327,7 +342,8 @@ class Database {
       usageCount: 0,
       isSubscribed: false,
       subscriptionType: 'none',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...extras
     };
 
     return this.execute(
@@ -511,7 +527,7 @@ class Database {
     category: string
   ): Promise<Consultation> {
     const id = crypto.randomUUID();
-    let email = 'guest@sarthavaha.io';
+    let email = 'guest@sarthavaha.com';
     if (userId !== 'SYSTEM') {
       const user = await this.getUserById(userId);
       if (user) {
@@ -599,7 +615,7 @@ class Database {
     responseSpoken?: string
   ): Promise<VoiceCommand> {
     const id = crypto.randomUUID();
-    let email = 'guest@sarthavaha.io';
+    let email = 'guest@sarthavaha.com';
     if (userId !== 'SYSTEM') {
       const user = await this.getUserById(userId);
       if (user) {

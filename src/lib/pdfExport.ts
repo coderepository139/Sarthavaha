@@ -256,7 +256,7 @@ export function exportCompetitiveIntelligenceReport(
   doc.setTextColor(51, 65, 85);
   doc.text(niche, margin + 45, ctx.y + 10);
   doc.text(audience || 'Broad / Optimized demographic', margin + 45, ctx.y + 18);
-  doc.text(userEmail || 'guest@sarthavaha.io', margin + 45, ctx.y + 26);
+  doc.text(userEmail || 'guest@sarthavaha.com', margin + 45, ctx.y + 26);
   
   const currentDateStr = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -398,7 +398,7 @@ export function exportCampaignDiagnosticReport(
   doc.setTextColor(51, 65, 85);
   doc.text(platform, margin + 50, ctx.y + 10);
   doc.text(`Rs. ${Number(inputSpend).toLocaleString('en-IN')}`, margin + 50, ctx.y + 18);
-  doc.text(userEmail || 'guest@sarthavaha.io', margin + 50, ctx.y + 26);
+  doc.text(userEmail || 'guest@sarthavaha.com', margin + 50, ctx.y + 26);
   
   const currentDateStr = new Date().toLocaleDateString('en-US', {
     weekday: 'long',

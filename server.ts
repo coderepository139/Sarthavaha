@@ -5,6 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import { getAuth } from 'firebase-admin/auth';
 import { db, User } from './server/db.js';
 import { generateMarketingContent, parseAgentCommand, SYSTEM_MARKETER_PROMPT, generateMarketResearch } from './server/gemini.js';
+import { aiBudget, aiIpLimiter, aiUserLimiter, authLimiter, aiUsageToday } from './server/aiGuard.js';
 
 // Define custom property on Express Request using interface declaration merge
 declare global {
@@ -16,9 +17,40 @@ declare global {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const SITE_DOMAIN = 'sarthavaha.com';
+const LEGACY_DEFAULT_ADMIN_HASH = crypto.createHash('sha256').update('adminpassword123').digest('hex');
 
-app.use(express.json());
+/** Pick a stable account identifier: email for Google/email users, phone number for OTP users. */
+function accountIdentifier(decoded: { email?: string; phone_number?: string; uid: string }, fallbackEmail?: string): string {
+  return decoded.email || fallbackEmail || decoded.phone_number || `${decoded.uid}@users.${SITE_DOMAIN}`;
+}
+
+function cleanTag(value: unknown, max = 100): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const v = value.trim().toLowerCase().replace(/[^a-z0-9_\-.() ]/g, '').slice(0, max);
+  return v || undefined;
+}
+
+/** Sign-up details sent by the client: method plus first-touch UTM attribution. */
+function signupDetailsFrom(body: any, decoded: { phone_number?: string; firebase?: { sign_in_provider?: string } }) {
+  const provider = decoded.firebase?.sign_in_provider;
+  const method: 'google' | 'phone' | 'email' =
+    provider === 'google.com' ? 'google' : provider === 'phone' ? 'phone' : 'email';
+  const a = body?.attribution || {};
+  return {
+    phoneNumber: decoded.phone_number,
+    signupMethod: method,
+    signupSource: cleanTag(a.source, 64) || '(direct)',
+    signupMedium: cleanTag(a.medium, 64),
+    signupCampaign: cleanTag(a.campaign),
+  };
+}
+
+// Behind Cloud Run / a load balancer: use the real client IP for rate limits.
+app.set('trust proxy', 1);
+app.use(express.json({ limit: '200kb' }));
+app.use('/api/auth', authLimiter);
 
 // Simple In-Memory Session Store: token -> userId
 const sessions = new Map<string, string>();
@@ -92,11 +124,10 @@ async function authenticateToken(req: express.Request, res: express.Response, ne
   try {
     const decodedToken = await getAuth().verifyIdToken(token);
     const uid = decodedToken.uid;
-    const email = decodedToken.email;
 
     let user = await db.getUserById(uid);
-    if (!user && email) {
-      user = await db.createUserWithId(uid, email, 'user');
+    if (!user && (decodedToken.email || decodedToken.phone_number)) {
+      user = await db.createUserWithId(uid, accountIdentifier(decodedToken), 'user', signupDetailsFrom(req.body, decodedToken));
     }
 
     if (!user) {
@@ -176,12 +207,13 @@ app.post('/api/auth/signup', async (req, res) => {
         }
         
         let existingUser = await db.getUserById(uid);
+        const isNewUser = !existingUser;
         if (!existingUser) {
-          existingUser = await db.createUserWithId(uid, email || decodedToken.email || 'user@sarthavaha.io', 'user');
+          existingUser = await db.createUserWithId(uid, accountIdentifier(decodedToken, email), 'user', signupDetailsFrom(req.body, decodedToken));
         }
         
         const { passwordHash: _, ...userResponse } = existingUser;
-        return res.status(201).json({ token, user: userResponse });
+        return res.status(201).json({ token, user: userResponse, isNewUser });
       } catch (err: any) {
         return res.status(401).json({ error: 'Failed to verify Firebase token: ' + err.message });
       }
@@ -232,15 +264,18 @@ app.post('/api/auth/login', async (req, res) => {
         const uid = decodedToken.uid;
         
         let user = await db.getUserById(uid);
+        const isNewUser = !user;
         if (!user) {
-          // Auto-create user if they logged in successfully with Firebase (e.g. Google Sign-In)
-          user = await db.createUserWithId(uid, email || decodedToken.email || 'user@sarthavaha.io', 'user');
+          // First sign-in with Google or a phone number creates the account.
+          const details = signupDetailsFrom(req.body, decodedToken);
+          user = await db.createUserWithId(uid, accountIdentifier(decodedToken, email), 'user', details);
+          await db.addLog(user.id, 'Sign-up', `New ${details.signupMethod} account from ${details.signupSource}${details.signupCampaign ? ` / ${details.signupCampaign}` : ''}.`);
+        } else {
+          await db.addLog(user.id, 'User Login (Firebase)', `Logged in via ${decodedToken.firebase?.sign_in_provider || 'Firebase'}.`);
         }
         
-        await db.addLog(user.id, 'User Login (Firebase)', `Logged in via Firebase Authentication.`);
-        
         const { passwordHash: _, ...userResponse } = user;
-        return res.json({ token, user: userResponse });
+        return res.json({ token, user: userResponse, isNewUser });
       } catch (err: any) {
         return res.status(401).json({ error: 'Failed to verify Firebase token: ' + err.message });
       }
@@ -257,7 +292,8 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
-    if (user.passwordHash !== passwordHash) {
+    // The old repo-wide default admin password must never work, even on databases seeded with it.
+    if (passwordHash === LEGACY_DEFAULT_ADMIN_HASH || user.passwordHash !== passwordHash) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
@@ -358,7 +394,7 @@ app.post('/api/billing/upgrade', authenticateToken, async (req, res) => {
 // ---------------- CORE MARKETING AGENT SERVICES ----------------
 
 // Chatbox service
-app.post('/api/chat', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/chat', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { prompt, history, category } = req.body;
     if (!prompt) {
@@ -389,7 +425,7 @@ app.post('/api/chat', authenticateToken, enforceUsageLimits, async (req, res) =>
 });
 
 // Research service
-app.post('/api/research', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/research', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { targetNiche, targetAudience } = req.body;
     if (!targetNiche) {
@@ -429,7 +465,7 @@ Please compile the response under these exact headings:
 });
 
 // Create Copywriter & Visual Ad service
-app.post('/api/create', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/create', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { channel, productName, description, tone, audience } = req.body;
     if (!productName || !description || !channel) {
@@ -473,7 +509,7 @@ Please generate:
 });
 
 // Optimization advice service
-app.post('/api/optimize', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/optimize', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { platform, spend, impressions, clicks, conversions } = req.body;
 
@@ -619,7 +655,7 @@ app.post('/api/user/keys', authenticateToken, async (req, res) => {
 });
 
 // Parse and execute natural language campaign commands
-app.post('/api/agent/command', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/agent/command', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { command } = req.body;
     if (!command) {
@@ -674,7 +710,7 @@ app.post('/api/agent/command', authenticateToken, enforceUsageLimits, async (req
 });
 
 // Push campaign directly to Facebook or Google Ads
-app.post('/api/integrations/push-campaign', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/integrations/push-campaign', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, async (req, res) => {
   try {
     const { platform, campaignName, adHeadline, adBodyCopy, dailyBudget } = req.body;
     if (!platform || !campaignName || !adHeadline || !adBodyCopy || !dailyBudget) {
@@ -763,7 +799,7 @@ app.post('/api/update-status', authenticateToken, async (req, res) => {
 });
 
 // Advanced Industry and Country Market Research endpoint (Tab 3)
-app.post('/api/get-market-research', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/get-market-research', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { country, macroSegment, microSegments } = req.body;
     if (!country || !macroSegment) {
@@ -804,7 +840,7 @@ app.post('/api/get-market-research', authenticateToken, enforceUsageLimits, asyn
 });
 
 // Auto-save creative simulation (Tab 4 Storage Vault)
-app.post('/api/generate-creative', authenticateToken, enforceUsageLimits, async (req, res) => {
+app.post('/api/generate-creative', aiIpLimiter, authenticateToken, aiUserLimiter, enforceUsageLimits, aiBudget, async (req, res) => {
   try {
     const { platform, productName, description, tone, audience } = req.body;
     if (!platform || !productName || !description) {
@@ -940,6 +976,10 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 });
 
 // Get system activity audit log (Admin Only)
+app.get('/api/admin/ai-usage', authenticateToken, requireAdmin, (req, res) => {
+  res.json(aiUsageToday());
+});
+
 app.get('/api/admin/logs', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const logs = await db.getLogs();

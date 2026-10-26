@@ -11,11 +11,14 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/schibsted-grotesk": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.1",
     "firebase": "^12.15.0",
     "firebase-admin": "^14.1.0",
     "jspdf": "^4.2.1",

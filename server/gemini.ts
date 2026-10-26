@@ -26,7 +26,13 @@ export async function generateMarketingContent(prompt: string, systemInstruction
     return response.text || 'No response generated.';
   } catch (error: any) {
     console.error('Error generating marketing content from Gemini:', error);
-    return `Error: ${error.message || 'Failed to generate content'}`;
+    // Throw instead of returning the error as text: the route then answers with an
+    // error and does not use up one of the person's free generations.
+    const status = error?.status || error?.code;
+    if (status === 429 || /quota|rate|exhausted|spend/i.test(error?.message || '')) {
+      throw new Error('Sarthavaha is very busy right now. Please try again in a minute. This didn’t use up a free generation.');
+    }
+    throw new Error('The AI service didn’t respond. Please try again. This didn’t use up a free generation.');
   }
 }
 
