@@ -1,0 +1,23 @@
+# Netlify serves the React front end as a static site.
+# The Express API (server.ts: sign-in, Gemini, rate limits) does NOT run on Netlify;
+# it needs a Node host (e.g. Cloud Run / AI Studio). Point /api/* at it below.
+
+[build]
+  command = "npx vite build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Uncomment and set your API server's URL so sign-in and AI features work:
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://YOUR-API-HOST/api/:splat"
+#   status = 200
+#   force = true
+
+# Single-page app: /privacy, /terms and any other path load index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
