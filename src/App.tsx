@@ -49,7 +49,9 @@ import {
   ArrowRight,
   FileDown,
   Settings,
-  Trash2
+  Trash2,
+  FileText,
+  Rocket
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatMessage, CampaignData, SystemLog, IntegrationStatus } from './types';
@@ -61,6 +63,45 @@ import {
   signInWithPopup, 
   signOut as firebaseSignOut 
 } from 'firebase/auth';
+
+/**
+ * Brand mark: a caravan route with three waypoints — the guide (sārthavāha)
+ * leading a campaign from goal to launch.
+ */
+function BrandMark({ size = 28, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true" className={className}>
+      <rect width="32" height="32" rx="9" className="fill-slate-900" />
+      <path d="M6 23c4-1 5-8 10-8s6 6 10-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="0.1 4" opacity="0.55" />
+      <circle cx="6.5" cy="23" r="2.2" fill="currentColor" opacity="0.6" />
+      <circle cx="16" cy="15" r="2.2" fill="currentColor" opacity="0.8" />
+      <circle cx="25.5" cy="8.5" r="3" fill="currentColor" />
+    </svg>
+  );
+}
+
+function Wordmark({ isWhite = false, sub = true }: { isWhite?: boolean; sub?: boolean }) {
+  return (
+    <span className="flex items-center gap-2.5 select-none">
+      <BrandMark className="text-marigold-400" />
+      <span className="flex flex-col leading-none">
+        <span className={`text-[15px] font-extrabold tracking-[-0.02em] ${isWhite ? 'text-slate-950' : 'text-white'}`}>Sarthavaha</span>
+        {sub && <span className="text-[10px] font-medium text-slate-500 mt-1">by Ethereal Horizon</span>}
+      </span>
+    </span>
+  );
+}
+
+type WorkspaceTab = 'terminal' | 'analytics' | 'research' | 'vault' | 'docs' | 'billing' | 'admin';
+
+const WORKSPACE_NAV: { id: WorkspaceTab; label: string; short: string; hint: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'terminal', label: 'Strategy chat', short: 'Chat', hint: 'Ask, plan and draft with the agent', icon: MessageSquare },
+  { id: 'analytics', label: 'Dashboard', short: 'Home', hint: 'Voice controls, campaigns and results', icon: LayoutDashboard },
+  { id: 'research', label: 'Market research', short: 'Research', hint: 'Competitors, audiences and benchmarks', icon: Search },
+  { id: 'vault', label: 'Ad library', short: 'Library', hint: 'Saved copy, images and research', icon: Layers },
+  { id: 'docs', label: 'Connections & API keys', short: 'Connect', hint: 'Facebook, Google Ads and generators', icon: BookOpen },
+  { id: 'billing', label: 'Plan & billing', short: 'Plan', hint: 'Usage and upgrades', icon: Zap },
+];
 
 const MOCK_GUEST_USER: User = {
   id: 'guest_user',
@@ -87,7 +128,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
 
   // App navigation
-  const [activeTab, setActiveTab] = useState<'terminal' | 'analytics' | 'research' | 'vault' | 'admin' | 'billing'>('terminal');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab | 'optimize'>('terminal');
 
   // Onboarding & Delayed signup states
   const [hasStarted, setHasStarted] = useState<boolean>(() => localStorage.getItem('sarthavaha_started') === 'true');
@@ -337,9 +378,13 @@ export default function App() {
     }
   }, [token]);
 
-  // Scroll chat messages to bottom
+  // Keep the newest chat message in view by scrolling only the chat panel,
+  // never the whole page (scrollIntoView used to jump the dashboard to the footer on load).
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatMessages.length === 0 && !chatLoading) return;
+    const anchor = chatBottomRef.current;
+    const panel = anchor?.parentElement;
+    if (panel) panel.scrollTo({ top: panel.scrollHeight, behavior: 'smooth' });
   }, [chatMessages, chatLoading]);
 
   const fetchCurrentUser = async () => {
@@ -1567,152 +1612,162 @@ export default function App() {
   // ---------------- RENDERING LOGIC -------  // Guest and Auth views: If !hasStarted, show the glowing Cyberpunk Landing Screen
   if (!hasStarted) {
     return (
-      <div id="landing-screen" className="min-h-screen flex flex-col bg-[#030712] text-slate-100 relative overflow-hidden font-sans scroll-smooth">
-        {/* Neon decorative mesh grids & glowing orbs */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-30 pointer-events-none" />
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#06B6D4]/10 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute top-[30%] right-[-10%] w-[40%] h-[40%] bg-[#8B5CF6]/8 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute bottom-[-10%] left-[20%] w-[50%] h-[50%] bg-[#06B6D4]/5 rounded-full blur-[120px] pointer-events-none" />
+      <div id="landing-screen" className="min-h-screen flex flex-col bg-slate-950 text-slate-100 relative overflow-x-hidden font-sans">
+        {/* Navigation */}
+        <header className="h-16 md:h-[72px] border-b border-slate-800/60 px-5 md:px-10 flex items-center justify-between gap-4 sticky top-0 z-30 bg-slate-950/85 backdrop-blur-xl">
+          <a href="#top" className="rounded-lg" aria-label="Sarthavaha home">
+            <Wordmark />
+          </a>
 
-        {/* Branded Navigation Header */}
-        <header className="h-20 border-b border-slate-800/40 px-6 md:px-12 flex items-center justify-between relative z-20 backdrop-blur-xl bg-[#030712]/75 sticky top-0">
-          <div className="flex items-center gap-3">
-            <div className="relative group">
-              <div className="absolute -inset-1 rounded-lg bg-gradient-to-r from-cyan-500 to-purple-600 opacity-20 blur-md group-hover:opacity-35 transition duration-1000 group-hover:duration-200" />
-              <div className="relative flex items-center gap-2 bg-slate-950/40 border border-slate-800/40 px-3 py-1.5 rounded-xl">
-                <span className="text-sm font-black tracking-[0.25em] bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent font-sans">
-                  SARTHAVAHA
-                </span>
-              </div>
-            </div>
-            <span className="text-[8px] tracking-[0.2em] text-[#06B6D4] font-extrabold uppercase border border-[#06B6D4]/30 px-2 py-0.5 rounded-lg bg-[#06B6D4]/10 shadow-[0_0_15px_rgba(6,182,212,0.15)] select-none">
-              AI NAVIGATOR
-            </span>
-          </div>
-          
-          <nav className="hidden md:flex items-center gap-8 text-[10px] tracking-widest text-slate-400 font-extrabold font-mono">
-            <button 
-              onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-              className="relative hover:text-[#06B6D4] transition-all duration-300 uppercase cursor-pointer group py-1"
-            >
-              <span>FEATURES</span>
-              <span className="absolute bottom-0 left-0 w-0 h-[1.5px] bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300 group-hover:w-full" />
-            </button>
-            <button 
-              onClick={() => document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' })}
-              className="relative hover:text-[#06B6D4] transition-all duration-300 uppercase cursor-pointer group py-1"
-            >
-              <span>ABOUT HERITAGE</span>
-              <span className="absolute bottom-0 left-0 w-0 h-[1.5px] bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300 group-hover:w-full" />
-            </button>
-            <button 
-              onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
-              className="relative hover:text-[#06B6D4] transition-all duration-300 uppercase cursor-pointer group py-1"
-            >
-              <span>PRICING</span>
-              <span className="absolute bottom-0 left-0 w-0 h-[1.5px] bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300 group-hover:w-full" />
-            </button>
-            <button 
-              onClick={() => document.getElementById('newsletter')?.scrollIntoView({ behavior: 'smooth' })}
-              className="relative hover:text-[#06B6D4] transition-all duration-300 uppercase cursor-pointer group py-1"
-            >
-              <span>DISPATCH NEWS</span>
-              <span className="absolute bottom-0 left-0 w-0 h-[1.5px] bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-300 group-hover:w-full" />
-            </button>
+          <nav className="hidden md:flex items-center gap-1 text-[13px] font-medium text-slate-400" aria-label="Page sections">
+            {[
+              { id: 'how-it-works', label: 'How it works' },
+              { id: 'features', label: 'Features' },
+              { id: 'pricing', label: 'Pricing' },
+              { id: 'about', label: 'The name' },
+            ].map(link => (
+              <a
+                key={link.id}
+                href={`#${link.id}`}
+                onClick={(e) => { e.preventDefault(); document.getElementById(link.id)?.scrollIntoView({ behavior: 'smooth' }); }}
+                className="px-3 py-2 rounded-lg hover:text-white hover:bg-slate-900 transition"
+              >
+                {link.label}
+              </a>
+            ))}
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => {
                 localStorage.setItem('sarthavaha_started', 'true');
                 setHasStarted(true);
                 setIsSignUp(false);
                 setShowDelayedSignup(true);
-                triggerToast('Opening workspace command hub auth...', 'info');
               }}
-              className="px-4 py-2 border border-slate-800 hover:border-[#06B6D4]/50 hover:bg-slate-900/60 text-xs font-bold text-slate-300 uppercase rounded-xl transition-all duration-300 cursor-pointer shadow-sm hover:shadow-[0_0_15px_rgba(6,182,212,0.1)] hover:text-white"
+              className="hidden sm:block px-3.5 py-2 text-[13px] font-semibold text-slate-300 hover:text-white rounded-lg hover:bg-slate-900 transition cursor-pointer"
             >
-              Sign In
+              Sign in
             </button>
             <button
               onClick={() => {
                 localStorage.setItem('sarthavaha_started', 'true');
                 setHasStarted(true);
                 setActiveTab('terminal');
-                triggerToast('Entered Sarthavaha workspace terminal!', 'success');
               }}
-              className="relative group px-5 py-2 overflow-hidden rounded-xl bg-slate-950 font-bold text-xs uppercase tracking-widest text-white transition-all duration-300 active:scale-95 shadow-[0_0_20px_rgba(6,182,212,0.15)] border border-cyan-500/25 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-accent-ink text-[13px] font-bold transition cursor-pointer"
             >
-              <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-600 opacity-85 group-hover:opacity-100 transition-opacity duration-300" />
-              <span className="relative z-10">Launch Console</span>
+              Open workspace
             </button>
           </div>
         </header>
 
-        {/* Main Content Sections Container */}
-        <div className="flex-1 relative z-10">
-          
-          {/* Hero Section */}
-          <section className="max-w-4xl mx-auto px-4 pt-20 pb-16 text-center">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-800 text-[10px] font-semibold text-purple-400 mb-6 tracking-wide shadow-lg uppercase">
-              <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-              Autonomous Enterprise Marketing Orchestration
+        <div id="top" className="flex-1 relative">
+
+          {/* Hero */}
+          <section className="relative max-w-6xl mx-auto px-5 md:px-10 pt-14 md:pt-24 pb-20 grid grid-cols-1 lg:grid-cols-12 gap-14 lg:gap-12 items-start">
+            <div className="lg:col-span-7">
+              <h1 className="text-[2.45rem] leading-[1.02] sm:text-6xl md:text-[4.25rem] font-extrabold tracking-[-0.035em] text-white">
+                <span className="block">One sentence in.</span>
+                <span className="block max-w-[13ch]">A campaign ready to launch.</span>
+              </h1>
+              <p className="mt-6 text-base md:text-lg text-slate-400 leading-relaxed max-w-[54ch]">
+                Tell Sarthavaha what you sell, who it&rsquo;s for and what you can spend. It studies your competitors, writes the ads, sets the targeting and lines everything up for Facebook and Google.
+              </p>
+
+              {/* Prompt */}
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleConsultClick(); }}
+                className="mt-9 max-w-xl rounded-2xl border border-slate-700/80 bg-slate-900 focus-within:border-amber-400/70 transition-colors"
+              >
+                <label htmlFor="landing-prompt" className="sr-only">Describe your campaign</label>
+                <textarea
+                  id="landing-prompt"
+                  rows={3}
+                  className="w-full bg-transparent px-5 pt-4 pb-2 text-[15px] leading-relaxed text-slate-100 placeholder:text-slate-500 outline-none resize-none"
+                  placeholder="Cold brew coffee brand in Bengaluru, targeting office workers 22–40, ₹30,000 a month"
+                  value={landingPrompt}
+                  onChange={(e) => setLandingPrompt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleConsultClick();
+                    }
+                  }}
+                />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-3 pb-3 pt-1">
+                  <span className="px-2 text-[12px] text-slate-500">Press Enter to start. Your first 5 runs are free.</span>
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-accent-ink text-sm font-bold transition cursor-pointer active:translate-y-px"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Plan my campaign
+                  </button>
+                </div>
+              </form>
+
+              <div className="mt-4 flex flex-wrap gap-2 max-w-xl">
+                <span className="text-[12px] text-slate-500 py-1.5 pr-1">Try</span>
+                {[
+                  'Dental clinic in Ludhiana, local Google search ads',
+                  'Handmade jewellery store, Instagram and Facebook',
+                  'B2B SaaS for accountants, LinkedIn leads',
+                ].map(example => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => setLandingPrompt(example)}
+                    className="px-3 py-1.5 rounded-full border border-slate-800 text-[12px] text-slate-300 hover:border-slate-600 hover:text-white transition cursor-pointer"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
-              Deploy Intelligent Campaigns with <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#06B6D4] via-[#8B5CF6] to-[#06B6D4]">
-                Sarthavaha Autonomous Agents
-              </span>
-            </h1>
-
-            <p className="text-sm md:text-base text-slate-400 max-w-2xl mx-auto leading-relaxed mb-10 font-sans">
-              Enter your campaign objective or budget goals, and watch Sarthavaha automatically perform competitor research, design copywriting hooks, configure parameters, and launch.
-            </p>
-
-            {/* AI AGENT COMMAND BOX */}
-            <div className="w-full max-w-2xl mx-auto bg-slate-900/35 backdrop-blur-xl border border-cyan-500/25 rounded-2xl p-5 shadow-[0_0_50px_rgba(6,182,212,0.1)] relative text-left">
-              <div className="absolute -top-3 left-4 px-2 py-0.5 bg-slate-950 border border-slate-800 text-[9px] font-mono font-bold tracking-wider rounded text-cyan-400 uppercase flex items-center gap-1.5">
-                <Terminal className="h-3 w-3 text-cyan-400" />
-                AI Agent Command Box
-              </div>
-              
-              <textarea
-                className="w-full h-28 bg-transparent text-sm text-slate-100 placeholder-slate-500 border-none outline-none resize-none focus:ring-0 pt-2"
-                placeholder="Instruct the AI agent (e.g., 'Target software developers for our SaaS product with a budget of $1500 and generate creative ad copies...')"
-                value={landingPrompt}
-                onChange={(e) => setLandingPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleConsultClick();
-                  }
-                }}
-              />
-              
-              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between border-t border-slate-800/60 pt-4 mt-2">
-                <span className="text-[9px] text-slate-500 font-mono tracking-widest flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 bg-cyan-400 rounded-full animate-ping" />
-                  SARTHAVAHA ENGINE ONLINE
-                </span>
-                <button
-                  onClick={handleConsultClick}
-                  className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-[#06B6D4] to-[#8B5CF6] hover:brightness-115 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(6,182,212,0.25)] active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Consult Agent
-                </button>
-              </div>
-            </div>
+            {/* The route: the agent's four stops, drawn once on load */}
+            <aside id="how-it-works" className="lg:col-span-5 lg:pt-3 scroll-mt-24" aria-label="What happens after you press Plan my campaign">
+              <p className="text-sm font-semibold text-slate-300 mb-6">What happens next</p>
+              <ol className="relative">
+                <span className="absolute left-[11px] top-3 bottom-3 w-0.5 bg-[repeating-linear-gradient(to_bottom,var(--color-slate-700)_0_3px,transparent_3px_8px)]" aria-hidden="true" />
+                <span className="absolute left-[11px] top-3 bottom-3 w-0.5 rounded-full bg-amber-400 origin-top route-line animate-route-draw" aria-hidden="true" />
+                {[
+                  { title: 'Scout the market', body: 'Reads what competitors are running and which keywords and interests they lean on.', icon: Search },
+                  { title: 'Write the ads', body: 'Headlines, body copy and hooks in a few variations, matched to each channel.', icon: FileText },
+                  { title: 'Set the targeting', body: 'Audiences, placements and a daily budget split that fits what you said you can spend.', icon: Target },
+                  { title: 'Ready to launch', body: 'You review the whole plan, then push it to Facebook or Google Ads in one step.', icon: Rocket },
+                ].map((stop, i) => {
+                  const Icon = stop.icon;
+                  return (
+                    <li
+                      key={stop.title}
+                      className="relative pl-14 pb-9 last:pb-0 animate-stop-in"
+                      style={{ animationDelay: `${0.35 + i * 0.35}s` }}
+                    >
+                      <span className={`absolute left-0 top-0 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-bold font-mono ring-4 ring-slate-950 ${
+                        i === 3 ? 'bg-amber-400 text-accent-ink' : 'bg-slate-800 text-amber-300'
+                      }`}>
+                        {i + 1}
+                      </span>
+                      <h3 className="flex items-center gap-2 text-[15px] font-bold text-white leading-6">
+                        <Icon className="h-4 w-4 text-slate-500" />
+                        {stop.title}
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-400 leading-relaxed max-w-[38ch]">{stop.body}</p>
+                    </li>
+                  );
+                })}
+              </ol>
+            </aside>
           </section>
 
           {/* MOBILE VOICE WORKFLOW SECTION (Sarthavaha Caravan Mobile Execution) */}
           <section id="mobile-workflow" className="max-w-6xl mx-auto px-6 py-20 border-t border-slate-900/80">
             <div className="text-center mb-12">
-              <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase font-bold">Mobile-First Orchestration</span>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white mt-1">Speak to Launch Campaign</h2>
+                            <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.03em] text-white">Or just say it out loud</h2>
               <p className="text-xs text-slate-400 mt-2 max-w-lg mx-auto">
-                No desktop required. Stand up from your meeting, grab your phone, and command Sarthavaha in natural speech.
+                Away from your desk? Describe the campaign to your phone. Sarthavaha writes it down, fills in the details and waits for you to approve it.
               </p>
             </div>
 
@@ -1720,7 +1775,7 @@ export default function App() {
               
               {/* Left Column: Interactive Mobile Simulator Screen */}
               <div className="lg:col-span-5 flex justify-center w-full">
-                <div className="w-full max-w-[290px] aspect-[9/18] bg-slate-950 border-[6px] border-slate-800 rounded-[32px] p-4 relative shadow-[0_0_50px_rgba(6,182,212,0.15)] flex flex-col justify-between overflow-hidden">
+                <div className="w-full max-w-[290px] aspect-[9/18] bg-slate-950 border-[6px] border-slate-800 rounded-[32px] p-4 relative shadow-[0_0_50px_rgba(229,150,28,0.15)] flex flex-col justify-between overflow-hidden">
                   
                   {/* Phone Speaker Notch */}
                   <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-4 bg-slate-800 rounded-full flex items-center justify-center gap-1.5 z-20">
@@ -1733,10 +1788,10 @@ export default function App() {
                     
                     {/* Top status bar */}
                     <div className="flex justify-between items-center text-[8px] text-slate-500 font-mono mb-2">
-                      <span>SARTHA.NET</span>
+                      <span>Sarthavaha</span>
                       <span className="flex items-center gap-1">
                         <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                        5G SECURE
+                        Listening
                       </span>
                     </div>
 
@@ -1745,32 +1800,32 @@ export default function App() {
                       
                       {/* Operator voice input */}
                       <div className="self-end max-w-[85%] bg-cyan-950/60 border border-cyan-500/30 rounded-xl p-2.5 rounded-tr-none text-[10px] text-cyan-100 shadow-md">
-                        <div className="flex items-center gap-1 text-cyan-400 font-bold uppercase text-[7px] mb-1">
+                        <div className="flex items-center gap-1 text-cyan-400 font-bold text-[7px] mb-1">
                           <Mic className="h-2 w-2 animate-ping" />
                           <span>Voice Transcribed</span>
                         </div>
                         <p className="italic">
-                          "Sarthavaha, create a Facebook ad campaign for our organic cold brew coffee. Set a $350 budget and target coffee enthusiasts."
+                          "Sarthavaha, create a Facebook ad campaign for our organic cold brew coffee. Set a ₹30,000 monthly budget and target coffee enthusiasts."
                         </p>
                       </div>
 
                       {/* Sarthavaha Real-Time AI Response */}
                       <div className="self-start max-w-[90%] bg-slate-900 border border-purple-500/20 rounded-xl p-2.5 rounded-tl-none text-slate-300">
-                        <div className="flex items-center gap-1 text-purple-400 font-bold uppercase text-[7px] mb-1">
+                        <div className="flex items-center gap-1 text-purple-400 font-bold text-[7px] mb-1">
                           <BrainCircuit className="h-2 w-2" />
                           <span>Sarthavaha Core</span>
                         </div>
                         <div className="space-y-1.5 font-mono text-[9px]">
                           <div className="flex justify-between text-slate-400">
-                            <span>NETWORK:</span>
+                            <span>Channel</span>
                             <span className="text-white font-bold">Facebook Ads</span>
                           </div>
                           <div className="flex justify-between text-slate-400">
-                            <span>BUDGET:</span>
-                            <span className="text-cyan-400 font-bold">$350.00 / week</span>
+                            <span>Budget</span>
+                            <span className="text-cyan-400 font-bold">₹30,000 / month</span>
                           </div>
                           <div className="flex justify-between text-slate-400">
-                            <span>AUDIENCE:</span>
+                            <span>Audience</span>
                             <span className="text-purple-400">Espresso, Organic, 22-45</span>
                           </div>
                         </div>
@@ -1789,23 +1844,23 @@ export default function App() {
                         <span className="w-1 h-3 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
                         <span className="w-1 h-5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
                         <span className="w-1 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.5s' }} />
-                        <span className="w-1 h-4 bg-[#8B5CF6] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                        <span className="w-1 h-6 bg-[#8B5CF6] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                        <span className="w-1 h-4 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                        <span className="w-1 h-6 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
                         <span className="w-1 h-3 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.6s' }} />
                         <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
                       </div>
-                      <span className="text-[7px] text-slate-500 font-mono uppercase tracking-wider">Listening to Voice Directives...</span>
+                      <span className="text-[7px] text-slate-500 font-mono">Listening…</span>
                     </div>
 
                     {/* Primary Trigger CTA Inside Simulator */}
                     <button
                       onClick={() => {
-                        setLandingPrompt("Create a Facebook ad campaign for premium organic cold brew coffee targeting coffee enthusiasts with $350 budget");
+                        setLandingPrompt("Create a Facebook ad campaign for premium organic cold brew coffee targeting coffee enthusiasts with a ₹30,000 monthly budget");
                         handleConsultClick();
                       }}
-                      className="w-full mt-3 py-2 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:brightness-110 text-white font-extrabold uppercase rounded-lg text-[9px] tracking-widest cursor-pointer text-center"
+                      className="w-full mt-3 py-2 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:brightness-110 text-accent-ink font-extrabold rounded-lg text-[9px] cursor-pointer text-center"
                     >
-                      Process & Review in Console
+                      Review this plan
                     </button>
 
                   </div>
@@ -1821,7 +1876,7 @@ export default function App() {
                   onClick={() => setActiveWorkflowStep(0)}
                   className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer ${
                     activeWorkflowStep === 0 
-                      ? 'bg-slate-900 border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.1)]' 
+                      ? 'bg-slate-900 border-cyan-500/40 shadow-[0_0_20px_rgba(229,150,28,0.1)]' 
                       : 'bg-slate-900/30 border-slate-800 hover:border-slate-700'
                   }`}
                 >
@@ -1835,12 +1890,10 @@ export default function App() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold tracking-wider text-cyan-400 uppercase">Phase Alpha</span>
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">The Standing Summon</h3>
+                        <h3 className="text-sm font-bold text-white">Say what you need</h3>
                       </div>
-                      <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                        You stand up from your desk, take your phone, and say: <span className="text-cyan-300 italic">"Sarthavaha, create a Facebook campaign for..."</span> Sarthavaha's audio capture activates instantly, tuned for outdoor and voice-direct clarity.
+                      <p className="text-sm text-slate-400 leading-relaxed">
+                        Tap the mic and talk the way you would to a colleague: <span className="text-amber-300">&ldquo;Create a Facebook campaign for our cold brew, ₹30,000 a month.&rdquo;</span>
                       </p>
                     </div>
                   </div>
@@ -1851,26 +1904,24 @@ export default function App() {
                   onClick={() => setActiveWorkflowStep(1)}
                   className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer ${
                     activeWorkflowStep === 1 
-                      ? 'bg-slate-900 border-[#8B5CF6]/40 shadow-[0_0_20px_rgba(139,92,246,0.1)]' 
+                      ? 'bg-slate-900 border-purple-500/40 shadow-[0_0_20px_rgba(229,150,28,0.1)]' 
                       : 'bg-slate-900/30 border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   <div className="flex gap-4">
                     <div className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center font-extrabold text-sm ${
                       activeWorkflowStep === 1 
-                        ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/30' 
+                        ? 'bg-purple-500/20 text-purple-500 border border-purple-500/30' 
                         : 'bg-slate-800 text-slate-400'
                     }`}>
                       2
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold tracking-wider text-purple-400 uppercase">Phase Beta</span>
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Dynamic Transcription</h3>
+                        <h3 className="text-sm font-bold text-white">It fills in the details</h3>
                       </div>
-                      <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                        Our integrated speech engine parses your acoustic parameters. It automatically isolates background office noise, transcribes requirements, and structures parameters like networks, budget thresholds, and user demographics.
+                      <p className="text-sm text-slate-400 leading-relaxed">
+                        Your words are transcribed and turned into a structured brief: channel, budget, audience age and interests.
                       </p>
                     </div>
                   </div>
@@ -1881,7 +1932,7 @@ export default function App() {
                   onClick={() => setActiveWorkflowStep(2)}
                   className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer ${
                     activeWorkflowStep === 2 
-                      ? 'bg-slate-900 border-cyan-500/40 shadow-[0_0_20px_rgba(6,182,212,0.1)]' 
+                      ? 'bg-slate-900 border-cyan-500/40 shadow-[0_0_20px_rgba(229,150,28,0.1)]' 
                       : 'bg-slate-900/30 border-slate-800 hover:border-slate-700'
                   }`}
                 >
@@ -1895,12 +1946,10 @@ export default function App() {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold tracking-wider text-cyan-400 uppercase">Phase Gamma</span>
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Autonomous Synthesis</h3>
+                        <h3 className="text-sm font-bold text-white">It builds the campaign</h3>
                       </div>
-                      <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                        Sarthavaha initiates campaign setup. It writes custom copywriting options, scrapes competitor data structures, maps direct audience targeting keywords, and packages them safely inside your workspace vault.
+                      <p className="text-sm text-slate-400 leading-relaxed">
+                        Ad copy options, competitor notes and targeting keywords are drafted and saved to your ad library.
                       </p>
                     </div>
                   </div>
@@ -1911,26 +1960,24 @@ export default function App() {
                   onClick={() => setActiveWorkflowStep(3)}
                   className={`p-5 rounded-2xl border transition-all duration-300 cursor-pointer ${
                     activeWorkflowStep === 3 
-                      ? 'bg-slate-900 border-[#8B5CF6]/40 shadow-[0_0_20px_rgba(139,92,246,0.1)]' 
+                      ? 'bg-slate-900 border-purple-500/40 shadow-[0_0_20px_rgba(229,150,28,0.1)]' 
                       : 'bg-slate-900/30 border-slate-800 hover:border-slate-700'
                   }`}
                 >
                   <div className="flex gap-4">
                     <div className={`h-10 w-10 shrink-0 rounded-xl flex items-center justify-center font-extrabold text-sm ${
                       activeWorkflowStep === 3 
-                        ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/30' 
+                        ? 'bg-purple-500/20 text-purple-500 border border-purple-500/30' 
                         : 'bg-slate-800 text-slate-400'
                     }`}>
                       4
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-mono font-bold tracking-wider text-purple-400 uppercase">Phase Omega</span>
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-700" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">One-Click Authorization</h3>
+                        <h3 className="text-sm font-bold text-white">You approve it</h3>
                       </div>
-                      <p className="text-xs text-slate-400 leading-relaxed font-sans">
-                        Open the dashboard on your phone. Sarthavaha intercepts the prompt, prompts you to sign in to ensure data protection, and immediately displays the complete campaign proposal for immediate deployment authorization.
+                      <p className="text-sm text-slate-400 leading-relaxed">
+                        Sign in once and the full proposal is waiting. Nothing goes live until you say so.
                       </p>
                     </div>
                   </div>
@@ -1944,9 +1991,8 @@ export default function App() {
           {/* Features Section */}
           <section id="features" className="max-w-6xl mx-auto px-6 py-20 border-t border-slate-900">
             <div className="text-center mb-12">
-              <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase font-bold">Suite Architecture</span>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white mt-1">Autonomous Capabilities</h2>
-              <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto">Sarthavaha coordinates multiple high-intelligence nodes to pilot your complete market presence.</p>
+                            <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.03em] text-white">Everything in one workspace</h2>
+              <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto">Four tools that share the same brief, so nothing gets typed twice.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1956,9 +2002,9 @@ export default function App() {
                 <div className="h-10 w-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4 group-hover:bg-cyan-500/20 transition-colors">
                   <Terminal className="h-5 w-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">Command Terminal</h3>
+                <h3 className="text-sm font-bold text-white mb-2">Strategy chat</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Enter high-level strategic commands. Sarthavaha's natural-language interpreter executes full pipeline marketing configurations instantly.
+                  Ask for a plan, a headline or a second opinion on your budget, in plain language.
                 </p>
               </div>
 
@@ -1967,9 +2013,9 @@ export default function App() {
                 <div className="h-10 w-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4 group-hover:bg-purple-500/20 transition-colors">
                   <BarChart3 className="h-5 w-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">Platform Analytics</h3>
+                <h3 className="text-sm font-bold text-white mb-2">Campaign dashboard</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Evaluate real-time ad performance metrics, custom charts, conversion tracks, and live ROI projections across unified dashboards.
+                  Spend, clicks and conversions for every campaign, with a check-up that tells you what to fix first.
                 </p>
               </div>
 
@@ -1978,9 +2024,9 @@ export default function App() {
                 <div className="h-10 w-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4 group-hover:bg-cyan-500/20 transition-colors">
                   <Search className="h-5 w-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">Advanced Research</h3>
+                <h3 className="text-sm font-bold text-white mb-2">Market research</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Spy on competitor keyword placements, extract targeting parameters, and pinpoint audience demographics with detailed intelligence reports.
+                  See which keywords and audiences competitors chase, and export the findings as a PDF.
                 </p>
               </div>
 
@@ -1989,9 +2035,9 @@ export default function App() {
                 <div className="h-10 w-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-4 group-hover:bg-purple-500/20 transition-colors">
                   <Database className="h-5 w-5" />
                 </div>
-                <h3 className="text-sm font-bold text-white mb-2 uppercase tracking-wide">Creative Vault</h3>
+                <h3 className="text-sm font-bold text-white mb-2">Ad library</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Generate copy variations, high-impact subject lines, and multi-version ad designs with structured local file persistence.
+                  Every ad, image and report you generate, saved and searchable for the next campaign.
                 </p>
               </div>
 
@@ -2002,23 +2048,19 @@ export default function App() {
           <section id="about" className="max-w-4xl mx-auto px-6 py-20 border-t border-slate-900">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
               <div className="md:col-span-5 flex flex-col items-center md:items-start text-center md:text-left">
-                <div className="h-16 w-16 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(6,182,212,0.1)]">
-                  <Globe className="h-8 w-8 text-cyan-400" />
-                </div>
-                <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase font-bold">Heritage & Identity</span>
-                <h2 className="text-2xl font-extrabold text-white mt-1">THE MERCHANT NAVIGATOR</h2>
-                <div className="h-1 w-12 bg-gradient-to-r from-cyan-400 to-indigo-500 mt-4 rounded" />
-              </div>
+                <BrandMark size={64} className="text-marigold-400 mb-6" />
+                                <h2 className="text-3xl font-extrabold tracking-[-0.03em] text-white">Why Sarthavaha</h2>
+                              </div>
 
               <div className="md:col-span-7 space-y-4 text-xs md:text-sm text-slate-300 leading-relaxed text-center md:text-left">
                 <p>
-                  In the Sanskrit heritage, <strong className="text-cyan-400">Sarthavaha (सार्थवाह)</strong> represents the supreme caravan leader or navigator who chartered complex terrain to guide ancient merchants safely to thriving markets.
+                  In Sanskrit, a <strong className="text-amber-300">sārthavāha (सार्थवाह)</strong> led merchant caravans across difficult country to the markets where their goods would sell.
                 </p>
                 <p>
-                  In the modern digital horizon, marketplace parameters fluctuate inside milliseconds. Sarthavaha recreates this historic role as a high-intelligence autonomous agent suite.
+                  Online markets move faster and the terrain is ad auctions instead of mountain passes, but the job is the same: know the route, avoid the traps, arrive with the goods.
                 </p>
                 <p>
-                  By processing massive arrays of competitive inputs and synthesizing strategic copywriting blocks, Sarthavaha navigates the modern advertising highways under the authority of Ethereal Horizon Corporation's digital orchestration suite.
+                  Sarthavaha is built by Ethereal Horizon to play that guide for small teams who don’t have a marketing department.
                 </p>
               </div>
             </div>
@@ -2027,9 +2069,8 @@ export default function App() {
           {/* Pricing Section */}
           <section id="pricing" className="max-w-6xl mx-auto px-6 py-20 border-t border-slate-900">
             <div className="text-center mb-12">
-              <span className="text-[10px] text-purple-400 font-mono tracking-widest uppercase font-bold">Flexible Plans</span>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white mt-1">Sarthavaha Licensing</h2>
-              <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto">Authorize custom tiers to supercharge your autonomous marketing deployments.</p>
+                            <h2 className="text-3xl md:text-4xl font-extrabold tracking-[-0.03em] text-white">Pricing</h2>
+              <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto">Start free. Upgrade when the five free runs are used up.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -2037,108 +2078,105 @@ export default function App() {
               {/* Pricing Tier 1: Starter */}
               <div className="bg-slate-900/40 border border-slate-800 p-8 rounded-2xl flex flex-col justify-between hover:border-slate-700 transition duration-300 relative overflow-hidden">
                 <div>
-                  <div className="text-[10px] text-slate-400 font-mono tracking-widest uppercase font-bold mb-2">Explorer Suite</div>
-                  <h3 className="text-xl font-bold text-white mb-4">Starter Trial</h3>
+                                    <h3 className="text-xl font-bold text-white mb-4">Free</h3>
                   <div className="flex items-baseline gap-1 mb-6">
-                    <span className="text-3xl font-extrabold text-white">$0</span>
+                    <span className="text-4xl font-extrabold tracking-tight text-white">₹0</span>
                     <span className="text-xs text-slate-500">/ forever</span>
                   </div>
                   
                   <ul className="space-y-3 mb-8 text-xs text-slate-400">
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>5 autonomous operations</span>
+                      <span>5 generations</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Standard audience templates</span>
+                      <span>Audience templates</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Basic competitor keyword lists</span>
+                      <span>Competitor keyword lists</span>
                     </li>
                   </ul>
                 </div>
 
                 <button
                   onClick={() => handlePricingCTA('Starter')}
-                  className="w-full py-2.5 border border-slate-700 hover:border-slate-500 text-xs font-bold text-slate-300 uppercase rounded-xl transition cursor-pointer"
+                  className="w-full py-2.5 border border-slate-700 hover:border-slate-500 text-xs font-bold text-slate-300 rounded-xl transition cursor-pointer"
                 >
-                  Activate Trial
+                  Start free
                 </button>
               </div>
 
               {/* Pricing Tier 2: Pro */}
-              <div className="bg-slate-900/40 border-2 border-cyan-500/40 p-8 rounded-2xl flex flex-col justify-between hover:border-cyan-500 transition duration-300 relative shadow-[0_0_30px_rgba(6,182,212,0.1)]">
-                <div className="absolute top-4 right-4 bg-cyan-500/10 border border-cyan-500/30 text-[9px] font-bold text-cyan-400 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              <div className="bg-slate-900/40 border-2 border-cyan-500/40 p-8 rounded-2xl flex flex-col justify-between hover:border-cyan-500 transition duration-300 relative shadow-[0_0_30px_rgba(229,150,28,0.1)]">
+                <div className="absolute top-4 right-4 bg-cyan-500/10 border border-cyan-500/30 text-[9px] font-bold text-cyan-400 px-2 py-0.5 rounded-full">
                   Recommended
                 </div>
                 <div>
-                  <div className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase font-bold mb-2">Navigator Level</div>
-                  <h3 className="text-xl font-bold text-white mb-4">Sarthavaha Pro</h3>
+                                    <h3 className="text-xl font-bold text-white mb-4">Pro</h3>
                   <div className="flex items-baseline gap-1 mb-6">
-                    <span className="text-3xl font-extrabold text-white">$99</span>
+                    <span className="text-4xl font-extrabold tracking-tight text-white">₹999</span>
                     <span className="text-xs text-slate-400">/ month</span>
                   </div>
                   
                   <ul className="space-y-3 mb-8 text-xs text-slate-300">
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0 animate-pulse" />
-                      <span>Unlimited autonomous operations</span>
+                      <span>Unlimited generations</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Deep competitor espionage tools</span>
+                      <span>Full competitor research with PDF export</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>AI copywriting creative ad vault</span>
+                      <span>Ad library with copy and image generation</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Budget forecasting dashboards</span>
+                      <span>Campaign check-ups and budget forecasts</span>
                     </li>
                   </ul>
                 </div>
 
                 <button
                   onClick={() => handlePricingCTA('Pro')}
-                  className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 text-xs font-bold text-white uppercase rounded-xl transition hover:brightness-110 cursor-pointer shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                  className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 text-xs font-bold text-accent-ink rounded-xl transition hover:brightness-110 cursor-pointer shadow-[0_0_15px_rgba(229,150,28,0.3)]"
                 >
-                  Acquire Pro License
+                  Get Pro
                 </button>
               </div>
 
               {/* Pricing Tier 3: Enterprise */}
               <div className="bg-slate-900/40 border border-slate-800 p-8 rounded-2xl flex flex-col justify-between hover:border-slate-700 transition duration-300 relative overflow-hidden">
                 <div>
-                  <div className="text-[10px] text-slate-400 font-mono tracking-widest uppercase font-bold mb-2">Autonomous Cluster</div>
-                  <h3 className="text-xl font-bold text-white mb-4">Enterprise Elite</h3>
+                                    <h3 className="text-xl font-bold text-white mb-4">Teams</h3>
                   <div className="flex items-baseline gap-1 mb-6">
-                    <span className="text-2xl font-extrabold text-white">Custom Tiers</span>
+                    <span className="text-2xl font-extrabold text-white">Custom pricing</span>
                   </div>
                   
                   <ul className="space-y-3 mb-8 text-xs text-slate-400">
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Dedicated private agent clusters</span>
+                      <span>Seats for your whole team</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Custom API & database channels</span>
+                      <span>Custom data and API connections</span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Check className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-                      <span>Meta/Google direct API setups</span>
+                      <span>Help connecting Meta and Google Ads</span>
                     </li>
                   </ul>
                 </div>
 
                 <button
                   onClick={() => handlePricingCTA('Enterprise')}
-                  className="w-full py-2.5 border border-slate-700 hover:border-slate-500 text-xs font-bold text-slate-300 uppercase rounded-xl transition cursor-pointer"
+                  className="w-full py-2.5 border border-slate-700 hover:border-slate-500 text-xs font-bold text-slate-300 rounded-xl transition cursor-pointer"
                 >
-                  Contact Console
+                  Talk to us
                 </button>
               </div>
 
@@ -2147,7 +2185,7 @@ export default function App() {
 
           {/* Newsletter Dispatch Section */}
           <section id="newsletter" className="max-w-4xl mx-auto px-6 py-20 border-t border-slate-900 text-center">
-            <div className="bg-slate-950/40 border border-cyan-500/20 rounded-3xl p-8 md:p-12 shadow-[0_0_35px_rgba(6,182,212,0.05)] relative">
+            <div className="bg-slate-950/40 border border-cyan-500/20 rounded-3xl p-8 md:p-12 shadow-[0_0_35px_rgba(229,150,28,0.05)] relative">
               <div className="absolute top-4 left-1/2 -translate-x-1/2">
                 <div className="h-8 w-8 rounded-full bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
                   <Mail className="h-4 w-4" />
@@ -2155,9 +2193,8 @@ export default function App() {
               </div>
 
               <div className="mt-4 mb-8">
-                <span className="text-[9px] text-cyan-400 font-mono tracking-widest uppercase font-bold">Dispatch Node</span>
-                <h2 className="text-xl md:text-2xl font-bold text-white mt-1">Sarthavaha Intelligence Dispatch</h2>
-                <p className="text-xs text-slate-400 mt-2 max-w-sm mx-auto">Receive direct summaries of algorithm adaptations, competitor pivots, and ad copywriting trends.</p>
+                                <h2 className="text-2xl md:text-3xl font-extrabold tracking-[-0.03em] text-white">A short email when ad platforms change</h2>
+                <p className="text-xs text-slate-400 mt-2 max-w-sm mx-auto">Algorithm updates, copy that is working right now, and what competitors changed. Twice a month.</p>
               </div>
 
               {newsletterSubscribed ? (
@@ -2168,7 +2205,7 @@ export default function App() {
                 >
                   <p className="flex items-center justify-center gap-2">
                     <Check className="h-4 w-4 shrink-0 bg-cyan-400 text-slate-950 rounded-full p-0.5" />
-                    Secure Dispatch Channel Authorized for: {newsletterEmail}
+                    Subscribed. The next issue goes to {newsletterEmail}.
                   </p>
                 </motion.div>
               ) : (
@@ -2176,16 +2213,16 @@ export default function App() {
                   <input
                     type="email"
                     required
-                    placeholder="Enter command dispatch email..."
+                    placeholder="you@company.com"
                     className="flex-1 bg-slate-900 border border-slate-800 text-slate-200 px-4 py-2.5 rounded-xl text-xs outline-none focus:border-cyan-500 transition-colors"
                     value={newsletterEmail}
                     onChange={(e) => setNewsletterEmail(e.target.value)}
                   />
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-xs font-bold uppercase rounded-xl transition duration-300 hover:brightness-110 active:scale-[0.98] cursor-pointer shrink-0"
+                    className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 text-accent-ink text-xs font-bold rounded-xl transition duration-300 hover:brightness-110 active:scale-[0.98] cursor-pointer shrink-0"
                   >
-                    Subscribe Dispatch
+                    Subscribe
                   </button>
                 </form>
               )}
@@ -2199,41 +2236,41 @@ export default function App() {
           <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8 text-xs mb-8 text-slate-400">
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold tracking-[0.2em] text-white">SARTHAVAHA</span>
+                <Wordmark />
               </div>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Autonomous marketing navigation system designed to optimize, generate, and execute campaigns at machine speed.
+                An AI marketing agent that researches, writes and launches ad campaigns for small teams.
               </p>
             </div>
             <div>
-              <h4 className="font-bold text-white mb-3 uppercase tracking-wider text-[10px]">Command Sectors</h4>
+              <h4 className="font-bold text-white mb-3 text-[10px]">Product</h4>
               <ul className="space-y-2 text-[11px]">
-                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('terminal'); }} className="hover:text-cyan-400 transition">AI Terminal</button></li>
-                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('analytics'); }} className="hover:text-cyan-400 transition">Metrics Center</button></li>
-                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('research'); }} className="hover:text-cyan-400 transition">Competitor spying</button></li>
-                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('vault'); }} className="hover:text-cyan-400 transition">Creative Vault</button></li>
+                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('terminal'); }} className="hover:text-cyan-400 transition">Strategy chat</button></li>
+                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('analytics'); }} className="hover:text-cyan-400 transition">Dashboard</button></li>
+                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('research'); }} className="hover:text-cyan-400 transition">Market research</button></li>
+                <li><button onClick={() => { localStorage.setItem('sarthavaha_started', 'true'); setHasStarted(true); setActiveTab('vault'); }} className="hover:text-cyan-400 transition">Ad library</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-bold text-white mb-3 uppercase tracking-wider text-[10px]">Corporation</h4>
+              <h4 className="font-bold text-white mb-3 text-[10px]">Company</h4>
               <ul className="space-y-2 text-[11px]">
                 <li><a href="#about" onClick={(e) => { e.preventDefault(); document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition">Ethereal Horizon</a></li>
-                <li><button onClick={() => triggerToast('Core cluster running at version S-1.8', 'info')} className="hover:text-cyan-400 text-left transition">System Status</button></li>
-                <li><button onClick={() => triggerToast('Support portal active for all Sarthavaha Pro tiers.', 'info')} className="hover:text-cyan-400 text-left transition">Support Line</button></li>
+                <li><button onClick={() => triggerToast('Core cluster running at version S-1.8', 'info')} className="hover:text-cyan-400 text-left transition">System status</button></li>
+                <li><button onClick={() => triggerToast('Support portal active for all Sarthavaha Pro tiers.', 'info')} className="hover:text-cyan-400 text-left transition">Support</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-bold text-white mb-3 uppercase tracking-wider text-[10px]">Legal nodes</h4>
+              <h4 className="font-bold text-white mb-3 text-[10px]">Legal</h4>
               <ul className="space-y-2 text-[11px]">
-                <li><button onClick={() => triggerToast('Terms of navigation are governed by Ethereal Horizon Corp standard agreements.', 'info')} className="hover:text-cyan-400 text-left transition">Terms of Service</button></li>
-                <li><button onClick={() => triggerToast('Data structures are encrypted locally and stored securely on authorized servers.', 'info')} className="hover:text-cyan-400 text-left transition">Privacy Policy</button></li>
+                <li><button onClick={() => triggerToast('Terms of navigation are governed by Ethereal Horizon Corp standard agreements.', 'info')} className="hover:text-cyan-400 text-left transition">Terms</button></li>
+                <li><button onClick={() => triggerToast('Data structures are encrypted locally and stored securely on authorized servers.', 'info')} className="hover:text-cyan-400 text-left transition">Privacy</button></li>
               </ul>
             </div>
           </div>
 
           <div className="max-w-6xl mx-auto border-t border-slate-900 pt-6 flex flex-col sm:flex-row items-center justify-between text-[10px] text-slate-500 gap-4">
-            <span>Sarthavaha Marketing Suite © 2026. All rights reserved.</span>
-            <span className="font-mono tracking-widest text-[#8B5CF6]/80">ETHEREAL HORIZON CORPORATION</span>
+            <span>© {new Date().getFullYear()} Ethereal Horizon. All rights reserved.</span>
+            <span>Made for small teams</span>
           </div>
         </footer>
       </div>
@@ -2242,8 +2279,8 @@ export default function App() {
 
   // Authenticated State: Main Layout
   return (
-    <div className={`min-h-screen flex flex-col font-sans select-none antialiased relative transition-all duration-300 ${
-      isWhite ? 'theme-white bg-slate-50 text-slate-800' : 'bg-[#020617] text-slate-200'
+    <div className={`h-dvh flex flex-col font-sans antialiased relative overflow-hidden ${
+      isWhite ? 'theme-white bg-slate-50 text-slate-800' : 'bg-slate-950 text-slate-200'
     }`}>
       
       {/* EPHEMERAL TOAST NOTIFIER */}
@@ -2256,7 +2293,7 @@ export default function App() {
             className={`fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg border text-xs font-medium ${
               isWhite
                 ? 'bg-white text-slate-800 border-slate-200 shadow-sm'
-                : 'bg-slate-900 text-slate-200 border-slate-800 shadow-[0_0_20px_rgba(79,70,229,0.15)]'
+                : 'bg-slate-900 text-slate-200 border-slate-800 shadow-[0_0_20px_rgba(229,150,28,0.15)]'
             }`}
           >
             {toastMessage.type === 'success' ? (
@@ -2272,118 +2309,50 @@ export default function App() {
       </AnimatePresence>
 
       {/* HEADER BAR */}
-      <header className={`h-16 border-b flex items-center justify-between px-4 md:px-6 shrink-0 sticky top-0 z-30 transition-all duration-300 ${
-        isWhite 
-          ? 'bg-white/80 border-slate-200 backdrop-blur-xl shadow-sm' 
-          : 'bg-[#020617]/70 border-slate-900/60 backdrop-blur-xl shadow-[0_4px_30px_rgba(0,0,0,0.3)]'
+      <header className={`h-16 border-b flex items-center justify-between gap-3 px-4 md:px-6 shrink-0 z-30 ${
+        isWhite ? 'bg-white/80 border-slate-200' : 'bg-slate-950/90 border-slate-800/70 backdrop-blur-xl'
       }`}>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className={`relative flex items-center select-none py-1.5 px-2.5 sm:px-3 rounded-xl border transition-all duration-300 ${
-            isWhite 
-              ? 'bg-slate-100 border-indigo-150/80 shadow-sm' 
-              : 'bg-slate-950/90 border-purple-500/25 shadow-[0_0_20px_rgba(168,85,247,0.12)]'
-          } overflow-hidden font-display`}>
-            <div className={`absolute inset-0 pointer-events-none transition-all duration-300 ${
-              isWhite ? 'bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.08),transparent_70%)]' : 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.15),transparent_70%)]'
-            }`} />
-            
-            {/* Tiny flare */}
-            {!isWhite && (
-              <div className="absolute top-[42%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
-                <div className="w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_12px_4px_rgba(255,255,255,1),0_0_24px_8px_rgba(168,85,247,0.9)] animate-pulse" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-[1px] bg-gradient-to-r from-transparent via-purple-300 to-transparent blur-[0.5px]" />
-              </div>
-            )}
-
-            <div className="flex flex-col items-center">
-              <span className={`text-[10px] sm:text-xs tracking-[0.2em] font-black relative z-20 transition-colors duration-300 ${isWhite ? 'text-slate-900' : 'text-white'}`}>SARTHAVAHA</span>
-              <span className={`text-[6px] sm:text-[7px] tracking-[0.25em] font-bold relative z-20 -mt-0.5 uppercase transition-colors duration-300 ${isWhite ? 'text-indigo-650' : 'text-purple-300'}`}>ETHEREAL HORIZON</span>
-            </div>
-          </div>
-          
-          <span className={`text-[9px] px-2 py-0.5 rounded-full font-medium font-mono border shadow-inner transition-all duration-300 hidden md:inline-flex ${
-            isWhite ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-slate-950/80 text-slate-400 border-slate-850'
-          }`}>
-            Full-Stack v1.2
-          </span>
-
-          <button 
+        <div className="flex items-center gap-4 min-w-0">
+          <button
             onClick={() => {
               setHasStarted(false);
               localStorage.setItem('sarthavaha_started', 'false');
-              triggerToast('Visiting Sarthavaha Homepage...', 'info');
             }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all duration-300 cursor-pointer shrink-0 border ${
-              isWhite 
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 hover:border-slate-300' 
-                : 'bg-slate-900/40 hover:bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
-            }`}
-            title="Visit Homepage"
+            className="shrink-0 cursor-pointer rounded-lg"
+            title="Go to the Sarthavaha homepage"
           >
-            <Home className={`h-3 w-3 ${isWhite ? 'text-indigo-650 font-bold' : 'text-cyan-400'}`} />
-            <span className="hidden md:inline">Visit Homepage</span>
+            <Wordmark isWhite={isWhite} sub={false} />
           </button>
-          
-          <button 
-            onClick={() => {
-              setActiveTab('docs');
-              setFbKeyInput(user?.facebookApiKey || '');
-              setGoogleKeyInput(user?.googleAdsApiKey || '');
-              setImageKeyInput(user?.imageGenApiKey || '');
-              setVideoKeyInput(user?.videoGenApiKey || '');
-              triggerToast('Opened Documentation & API Setup', 'info');
-            }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all duration-300 cursor-pointer shrink-0 border ${
-              activeTab === 'docs' 
-                ? isWhite
-                  ? 'bg-indigo-50 text-indigo-750 border-indigo-200 shadow-sm'
-                  : 'bg-purple-500/10 text-purple-300 border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.15)]' 
-                : isWhite
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 hover:border-slate-300'
-                  : 'bg-slate-900/40 hover:bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
-            }`}
-            title="Docs & APIs"
-          >
-            <BookOpen className={`h-3 w-3 ${isWhite ? 'text-indigo-600' : 'text-purple-400'}`} />
-            <span className="hidden md:inline">Docs & APIs</span>
-          </button>
+          <span className={`hidden md:block h-5 w-px ${isWhite ? 'bg-slate-200' : 'bg-slate-800'}`} />
+          <div className="hidden md:block min-w-0">
+            <p className={`text-sm font-semibold truncate ${isWhite ? 'text-slate-900' : 'text-white'}`}>
+              {activeTab === 'admin' ? 'Admin' : (WORKSPACE_NAV.find(n => n.id === activeTab)?.label ?? 'Workspace')}
+            </p>
+          </div>
         </div>
 
-        {/* User context action */}
-        <div className="flex items-center gap-2 sm:gap-4 text-xs">
-          <div className="hidden sm:flex items-center gap-2.5">
-            {/* Avatar circle */}
-            <div className={`h-8 w-8 rounded-full p-[1px] shadow-md transition-all duration-300 ${
-              isWhite ? 'bg-gradient-to-tr from-indigo-500 to-cyan-500 shadow-slate-100' : 'bg-gradient-to-tr from-cyan-500 to-purple-600 shadow-indigo-500/10'
-            }`}>
-              <div className={`h-full w-full rounded-full flex items-center justify-center font-mono text-xs font-black select-none uppercase transition-all duration-300 ${
-                isWhite ? 'bg-white text-indigo-650' : 'bg-slate-950 text-cyan-400'
-              }`}>
-                {(user?.email || 'G')[0]}
-              </div>
-            </div>
-            
-            <div className="flex flex-col text-left">
-              <span className={`font-semibold font-mono text-[11px] leading-tight max-w-[150px] truncate transition-colors duration-300 ${isWhite ? 'text-slate-800' : 'text-slate-200'}`}>{user?.email || 'guest@sarthavaha.io'}</span>
-              <span className="text-[9px] text-slate-500 flex items-center justify-start gap-1 font-sans mt-0.5">
-                Role: <strong className={`uppercase tracking-widest font-bold text-[8px] transition-colors duration-300 ${isWhite ? 'text-indigo-600' : 'text-cyan-400'}`}>{user?.role || 'user'}</strong>
-              </span>
-            </div>
-          </div>
-
-          <div className={`h-8 w-px transition-colors duration-300 hidden sm:block ${isWhite ? 'bg-slate-200' : 'bg-slate-800/80'}`} />
-
-          {/* Subscription State Pill */}
+        {/* Account */}
+        <div className="flex items-center gap-2 sm:gap-3 text-xs shrink-0">
           {user?.isSubscribed ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 font-bold rounded-full border border-emerald-500/25 shadow-[0_0_15px_rgba(16,185,129,0.1)] text-[10px] uppercase tracking-wider" title="Premium Tier">
-              <Zap className="h-3 w-3 fill-emerald-400 text-emerald-400 animate-pulse shrink-0" />
-              <span className="hidden md:inline">Premium Tier</span>
-            </div>
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 font-semibold rounded-full border border-emerald-500/25 text-[11px]">
+              <Zap className="h-3 w-3 fill-emerald-400 shrink-0" />
+              Pro
+            </span>
           ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 text-amber-400 font-bold rounded-full border border-amber-500/25 text-[10px] uppercase tracking-wider" title={`Free Plan (${user?.usageCount || 0}/5)`}>
-              <Coins className="h-3 w-3 text-amber-400 shrink-0" />
-              <span className="hidden md:inline">Free Plan ({user?.usageCount || 0}/5)</span>
-            </div>
+            <button
+              onClick={() => setActiveTab('billing')}
+              className="inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-full border border-slate-800 hover:border-amber-500/40 text-[11px] font-semibold text-slate-300 hover:text-white transition cursor-pointer"
+              title="Free plan usage"
+            >
+              <span className="relative h-4 w-4 shrink-0" aria-hidden="true">
+                <svg viewBox="0 0 16 16" className="h-4 w-4 -rotate-90">
+                  <circle cx="8" cy="8" r="6.5" fill="none" strokeWidth="2.5" className="stroke-slate-800" />
+                  <circle cx="8" cy="8" r="6.5" fill="none" strokeWidth="2.5" strokeLinecap="round" className="stroke-amber-400"
+                    strokeDasharray={`${Math.min(queryCount / 5, 1) * 40.8} 40.8`} />
+                </svg>
+              </span>
+              <span className="font-mono">{Math.max(5 - queryCount, 0)} of 5 free left</span>
+            </button>
           )}
 
           {!token ? (
@@ -2392,206 +2361,119 @@ export default function App() {
                 setIsSignUp(false);
                 setShowDelayedSignup(true);
               }}
-              className="px-3 sm:px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:brightness-110 text-white font-bold rounded-lg transition text-[10px] uppercase tracking-wider shadow-[0_0_15px_rgba(6,182,212,0.25)] cursor-pointer"
+              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-accent-ink font-bold rounded-lg transition text-xs cursor-pointer"
             >
-              Sign In
+              Sign in
             </button>
           ) : (
-            <button
-              onClick={handleLogout}
-              title="Log out of Dashboard"
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer border border-slate-800/60 hover:border-slate-700"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex flex-col text-right leading-tight">
+                <span className={`font-semibold text-[12px] max-w-[180px] truncate ${isWhite ? 'text-slate-800' : 'text-slate-200'}`}>{user?.email}</span>
+                <span className="text-[10px] text-slate-500 capitalize">{user?.role || 'user'}</span>
+              </div>
+              <span className="h-8 w-8 rounded-full bg-slate-800 text-amber-300 flex items-center justify-center text-xs font-bold uppercase select-none">
+                {(user?.email || 'G')[0]}
+              </span>
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                aria-label="Sign out"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        
+      <div className="flex flex-1 min-h-0">
+
         {/* SIDEBAR NAVIGATION */}
-        <aside className={`w-64 border-r flex flex-col justify-between shrink-0 hidden md:flex transition-all duration-300 ${
-          isWhite ? 'bg-slate-100/95 border-slate-200' : 'border-slate-800 bg-[#020617]'
+        <aside className={`w-64 border-r flex-col justify-between shrink-0 hidden md:flex overflow-y-auto ${
+          isWhite ? 'bg-slate-100/95 border-slate-200' : 'border-slate-800/70 bg-slate-950'
         }`}>
-          <div className="p-4 space-y-1">
-            <div className={`text-[10px] font-semibold uppercase tracking-wider px-3 mb-2 transition-colors duration-300 ${
-              isWhite ? 'text-slate-500' : 'text-slate-500'
-            }`}>
-              Sarthavaha Suite
-            </div>
-
-            <button
-              onClick={() => {
-                setHasStarted(false);
-                localStorage.setItem('sarthavaha_started', 'false');
-                triggerToast('Visiting Sarthavaha Homepage...', 'info');
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold rounded-lg border mb-2 cursor-pointer ${
-                isWhite 
-                  ? 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 border-indigo-200/50 bg-white' 
-                  : 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/20 border-cyan-500/10 bg-transparent'
-              }`}
-            >
-              <Home className="h-4 w-4 shrink-0" />
-              <span>Back to Homepage</span>
-            </button>
-            
-            <button
-              onClick={() => setActiveTab('terminal')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold cursor-pointer ${
-                activeTab === 'terminal' 
-                  ? isWhite
-                    ? 'bg-indigo-50/80 text-indigo-700 rounded-lg border-l-2 border-indigo-600 font-bold'
-                    : 'bg-slate-800/50 text-[#06B6D4] rounded-lg border-l-2 border-[#06B6D4]' 
-                  : isWhite
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
-              }`}
-            >
-              <MessageSquare className="h-4 w-4 shrink-0" />
-              <span>AI Agent Terminal</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('analytics')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold cursor-pointer ${
-                activeTab === 'analytics' 
-                  ? isWhite
-                    ? 'bg-indigo-50/80 text-indigo-700 rounded-lg border-l-2 border-indigo-600 font-bold'
-                    : 'bg-slate-800/50 text-[#06B6D4] rounded-lg border-l-2 border-[#06B6D4]' 
-                  : isWhite
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
-              }`}
-            >
-              <LayoutDashboard className="h-4 w-4 shrink-0" />
-              <span>Platform Analytics</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('research')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold cursor-pointer ${
-                activeTab === 'research' 
-                  ? isWhite
-                    ? 'bg-indigo-50/80 text-indigo-700 rounded-lg border-l-2 border-indigo-600 font-bold'
-                    : 'bg-slate-800/50 text-[#06B6D4] rounded-lg border-l-2 border-[#06B6D4]' 
-                  : isWhite
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
-              }`}
-            >
-              <Search className="h-4 w-4 shrink-0" />
-              <span>Advanced Research</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('vault')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold cursor-pointer ${
-                activeTab === 'vault' 
-                  ? isWhite
-                    ? 'bg-indigo-50/80 text-indigo-700 rounded-lg border-l-2 border-indigo-600 font-bold'
-                    : 'bg-slate-800/50 text-[#06B6D4] rounded-lg border-l-2 border-[#06B6D4]' 
-                  : isWhite
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
-              }`}
-            >
-              <Layers className="h-4 w-4 shrink-0" />
-              <span>Creative Ad Vault</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab('docs');
-                setFbKeyInput(user?.facebookApiKey || '');
-                setGoogleKeyInput(user?.googleAdsApiKey || '');
-                setImageKeyInput(user?.imageGenApiKey || '');
-                setVideoKeyInput(user?.videoGenApiKey || '');
-                triggerToast('Opened Documentation & API Setup', 'info');
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold cursor-pointer ${
-                activeTab === 'docs' 
-                  ? isWhite
-                    ? 'bg-indigo-50/80 text-indigo-700 rounded-lg border-l-2 border-indigo-600 font-bold'
-                    : 'bg-slate-800/50 text-[#06B6D4] rounded-lg border-l-2 border-[#06B6D4]' 
-                  : isWhite
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
-              }`}
-            >
-              <BookOpen className="h-4 w-4 shrink-0" />
-              <span>Docs & API Keys</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('billing')}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold cursor-pointer ${
-                activeTab === 'billing' 
-                  ? isWhite
-                    ? 'bg-indigo-50/80 text-indigo-700 rounded-lg border-l-2 border-indigo-600 font-bold'
-                    : 'bg-slate-800/50 text-purple-400 rounded-lg border-l-2 border-purple-500' 
-                  : isWhite
-                    ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
-              }`}
-            >
-              <Zap className="h-4 w-4 shrink-0" />
-              <span>Billing & Plan</span>
-            </button>
-
-            {/* Admin Console Tab Option */}
-            {user?.role === 'admin' && (
-              <div className="pt-4 border-t border-slate-800 mt-4 space-y-1">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-3 mb-2">
-                  Control Board
-                </div>
+          <nav className="p-3 space-y-0.5" aria-label="Workspace">
+            {WORKSPACE_NAV.map(item => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
                 <button
-                  onClick={() => setActiveTab('admin')}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 transition text-xs font-semibold ${
-                    activeTab === 'admin' 
-                      ? 'bg-slate-800/50 text-indigo-400 rounded-lg border-l-2 border-indigo-500' 
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg'
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    if (item.id === 'docs') {
+                      setFbKeyInput(user?.facebookApiKey || '');
+                      setGoogleKeyInput(user?.googleAdsApiKey || '');
+                      setImageKeyInput(user?.imageGenApiKey || '');
+                      setVideoKeyInput(user?.videoGenApiKey || '');
+                    }
+                  }}
+                  aria-current={active ? 'page' : undefined}
+                  className={`group relative w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition cursor-pointer ${
+                    active
+                      ? isWhite ? 'bg-white text-slate-950 shadow-sm' : 'bg-slate-900 text-white'
+                      : isWhite ? 'text-slate-600 hover:text-slate-950 hover:bg-white/60' : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
                   }`}
                 >
-                  <Database className="h-4 w-4 shrink-0" />
-                  <span>Admin Management</span>
+                  {active && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full bg-amber-400" aria-hidden="true" />}
+                  <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${active ? 'text-amber-400' : ''}`} />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold leading-snug">{item.label}</span>
+                    <span className={`block text-[11px] leading-snug mt-0.5 ${active ? 'text-slate-400' : 'text-slate-500'}`}>{item.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+
+            {user?.role === 'admin' && (
+              <div className={`pt-3 mt-3 border-t ${isWhite ? 'border-slate-200' : 'border-slate-800/70'}`}>
+                <button
+                  onClick={() => setActiveTab('admin')}
+                  aria-current={activeTab === 'admin' ? 'page' : undefined}
+                  className={`relative w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-semibold transition cursor-pointer ${
+                    activeTab === 'admin' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+                  }`}
+                >
+                  {activeTab === 'admin' && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full bg-amber-400" aria-hidden="true" />}
+                  <Database className={`h-4 w-4 shrink-0 ${activeTab === 'admin' ? 'text-amber-400' : ''}`} />
+                  Admin
                 </button>
               </div>
             )}
-          </div>
+          </nav>
 
-          {/* Limit / Plan details card */}
-          <div className="p-4 border-t border-slate-800 bg-indigo-950/10 m-3 rounded-xl border border-indigo-500/20">
+          {/* Plan */}
+          <div className={`m-3 p-4 rounded-xl border ${isWhite ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-slate-800'}`}>
             {!user?.isSubscribed ? (
               <div className="space-y-3">
-                <div className="flex justify-between items-center text-[11px] text-indigo-300 font-medium">
-                  <span>Free Queries Spent</span>
-                  <span className="text-white">{queryCount} / 5</span>
+                <div className="flex justify-between items-baseline">
+                  <span className={`text-[13px] font-semibold ${isWhite ? 'text-slate-900' : 'text-white'}`}>Free plan</span>
+                  <span className="text-[11px] text-slate-400 font-mono">{Math.min(queryCount, 5)} / 5 used</span>
                 </div>
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-gradient-to-r from-[#06B6D4] to-[#8B5CF6] h-full transition-all duration-300"
-                    style={{ width: `${Math.min((queryCount / 5) * 100, 100)}%` }}
-                  />
+                <div className="flex gap-1" role="meter" aria-valuemin={0} aria-valuemax={5} aria-valuenow={Math.min(queryCount, 5)} aria-label="Free generations used">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <span key={i} className={`h-1.5 flex-1 rounded-full ${i < queryCount ? 'bg-amber-400' : isWhite ? 'bg-slate-200' : 'bg-slate-800'}`} />
+                  ))}
                 </div>
-                <div className="text-[9px] text-slate-400 text-center uppercase tracking-wider font-mono">
-                  {5 - queryCount > 0 ? `${5 - queryCount} Generations Remaining` : 'Free Trial Exhausted'}
-                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  {5 - queryCount > 0
+                    ? `${5 - queryCount} free generation${5 - queryCount === 1 ? '' : 's'} left. Pro removes the limit.`
+                    : 'You have used all free generations. Upgrade to keep going.'}
+                </p>
                 <button
                   onClick={() => setActiveTab('billing')}
-                  className="w-full mt-3 py-2 bg-gradient-to-r from-[#06B6D4] to-[#8B5CF6] hover:brightness-110 text-white text-xs font-semibold rounded-lg shadow-lg transition flex items-center justify-center gap-1 cursor-pointer"
+                  className="w-full py-2 bg-amber-400 hover:bg-amber-300 text-accent-ink text-xs font-bold rounded-lg transition cursor-pointer"
                 >
-                  <Zap className="h-3.5 w-3.5 fill-white text-white animate-pulse" />
                   Upgrade to Pro
                 </button>
               </div>
             ) : (
-              <div className="flex items-start gap-2 text-slate-400">
+              <div className="flex items-start gap-2.5">
                 <Sparkles className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div className="text-[11px]">
-                  <p className="font-semibold text-slate-200">Unlimited Pro Account</p>
-                  <p className="text-[10px] text-slate-500">All APIs & pipelines active</p>
+                <div>
+                  <p className={`text-[13px] font-semibold ${isWhite ? 'text-slate-900' : 'text-slate-100'}`}>Pro plan</p>
+                  <p className="text-[11px] text-slate-500">Unlimited generations</p>
                 </div>
               </div>
             )}
@@ -2599,7 +2481,7 @@ export default function App() {
         </aside>
 
         {/* WORKSPACE VIEWPORT */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 pb-24 md:pb-8">
+        <main className="flex-1 min-w-0 overflow-y-auto px-4 py-6 md:p-8 pb-28 md:pb-10">
 
           <AnimatePresence mode="wait">
             <motion.div
@@ -2617,7 +2499,7 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-950/40 p-4 border border-slate-800 rounded-2xl relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none" />
                     <div>
-                      <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase font-bold">Workspace Engine</span>
+                      <span className="text-[10px] text-cyan-400 font-mono font-bold">Workspace Engine</span>
                       <h1 className="text-lg font-bold text-white font-sans">Autonomous Marketing Console</h1>
                     </div>
                     
@@ -2633,7 +2515,7 @@ export default function App() {
                           }}
                           className={`px-3 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
                             !isMinimalDashboard 
-                              ? 'bg-purple-600/25 text-purple-300 border border-purple-500/30 shadow-[0_0_10px_rgba(139,92,246,0.15)]' 
+                              ? 'bg-purple-600/25 text-purple-300 border border-purple-500/30 shadow-[0_0_10px_rgba(229,150,28,0.15)]' 
                               : 'text-slate-500 hover:text-slate-300'
                           }`}
                         >
@@ -2649,7 +2531,7 @@ export default function App() {
                           }}
                           className={`px-3 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer ${
                             isMinimalDashboard 
-                              ? 'bg-cyan-600/25 text-cyan-300 border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.15)]' 
+                              ? 'bg-cyan-600/25 text-cyan-300 border border-cyan-500/30 shadow-[0_0_10px_rgba(229,150,28,0.15)]' 
                               : 'text-slate-500 hover:text-slate-300'
                           }`}
                         >
@@ -2666,7 +2548,7 @@ export default function App() {
                       {/* 1. Sleek Metrics Dashboard Row */}
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-4 flex flex-col justify-between hover:border-slate-800/60 transition duration-300">
-                          <span className="text-[9px] text-slate-500 uppercase font-mono tracking-wider">Active Campaigns</span>
+                          <span className="text-[9px] text-slate-500 font-mono">Active Campaigns</span>
                           <div className="flex items-baseline gap-2 mt-2">
                             <span className="text-xl font-bold text-white font-mono">{campaigns.length || 3}</span>
                             <span className="text-[9px] text-emerald-400 font-medium flex items-center gap-0.5 font-mono">
@@ -2676,7 +2558,7 @@ export default function App() {
                         </div>
 
                         <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-4 flex flex-col justify-between hover:border-slate-800/60 transition duration-300">
-                          <span className="text-[9px] text-slate-500 uppercase font-mono tracking-wider">Average CTR</span>
+                          <span className="text-[9px] text-slate-500 font-mono">Average CTR</span>
                           <div className="flex items-baseline gap-2 mt-2">
                             <span className="text-xl font-bold text-white font-mono">3.82%</span>
                             <span className="text-[9px] text-emerald-400 font-medium font-mono">+12.4%</span>
@@ -2684,7 +2566,7 @@ export default function App() {
                         </div>
 
                         <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-4 flex flex-col justify-between hover:border-slate-800/60 transition duration-300">
-                          <span className="text-[9px] text-slate-500 uppercase font-mono tracking-wider">Acquisition Rate</span>
+                          <span className="text-[9px] text-slate-500 font-mono">Acquisition Rate</span>
                           <div className="flex items-baseline gap-2 mt-2">
                             <span className="text-xl font-bold text-white font-mono">2.45%</span>
                             <span className="text-[9px] text-cyan-400 font-medium font-mono">Optimal</span>
@@ -2692,7 +2574,7 @@ export default function App() {
                         </div>
 
                         <div className="bg-slate-950/60 border border-slate-900 rounded-xl p-4 flex flex-col justify-between hover:border-slate-800/60 transition duration-300">
-                          <span className="text-[9px] text-slate-500 uppercase font-mono tracking-wider">Total Allocations</span>
+                          <span className="text-[9px] text-slate-500 font-mono">Total Allocations</span>
                           <div className="flex items-baseline gap-2 mt-2">
                             <span className="text-xl font-bold text-white font-mono">Rs. 43,500</span>
                             <span className="text-[9px] text-slate-500 font-mono">Avg Spend</span>
@@ -2723,9 +2605,9 @@ export default function App() {
                               onClick={handleToggleVoiceAgent}
                               className={`h-11 w-11 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer ${
                                 isListening 
-                                  ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/20' 
+                                  ? 'bg-cyan-500 text-accent-ink shadow-lg shadow-cyan-500/20' 
                                   : isAgentSpeaking 
-                                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20' 
+                                    ? 'bg-purple-600 text-accent-ink shadow-lg shadow-purple-600/20' 
                                     : 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                               }`}
                               title="Toggle Voice Controller"
@@ -2736,7 +2618,7 @@ export default function App() {
 
                           <div className="space-y-0.5">
                             <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-slate-500 font-mono uppercase tracking-widest font-bold">Vocal Command Link</span>
+                              <span className="text-[10px] text-slate-500 font-mono font-bold">Vocal Command Link</span>
                               <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
                             </div>
                             <p className="text-[11px] text-slate-400 font-medium">
@@ -2833,7 +2715,7 @@ export default function App() {
                         <div className="flex items-center justify-between border-b border-slate-900 pb-3">
                           <div className="flex items-center gap-2">
                             <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <h3 className="text-xs font-bold text-white uppercase tracking-wider">Active Campaigns Stream</h3>
+                            <h3 className="text-xs font-bold text-white">Active Campaigns Stream</h3>
                           </div>
                           <span className="text-[9px] text-slate-500 font-mono">Synchronized with Sarthavaha APIs</span>
                         </div>
@@ -2868,7 +2750,7 @@ export default function App() {
                             <div key={camp.id} className="p-3.5 bg-slate-950/80 border border-slate-900 rounded-xl hover:border-slate-850 transition duration-350 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                               <div className="space-y-1 lg:max-w-xs w-full">
                                 <div className="flex items-center gap-2">
-                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold font-mono tracking-wider uppercase ${
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold font-mono   ${
                                     camp.platform === 'facebook' 
                                       ? 'bg-blue-500/10 text-blue-400 border border-blue-500/15' 
                                       : 'bg-amber-500/10 text-amber-400 border border-amber-500/15'
@@ -2882,28 +2764,28 @@ export default function App() {
 
                               <div className="grid grid-cols-4 gap-4 lg:gap-8 text-left font-mono">
                                 <div>
-                                  <span className="text-[8px] text-slate-500 uppercase tracking-wide block">Spend</span>
+                                  <span className="text-[8px] text-slate-500 block">Spend</span>
                                   <span className="text-[11px] font-bold text-slate-300">Rs. {camp.spend}</span>
                                 </div>
                                 <div>
-                                  <span className="text-[8px] text-slate-500 uppercase tracking-wide block">Clicks</span>
+                                  <span className="text-[8px] text-slate-500 block">Clicks</span>
                                   <span className="text-[11px] font-bold text-slate-300">{camp.clicks}</span>
                                 </div>
                                 <div>
-                                  <span className="text-[8px] text-slate-500 uppercase tracking-wide block">CTR</span>
+                                  <span className="text-[8px] text-slate-500 block">CTR</span>
                                   <span className="text-[11px] font-bold text-white font-mono">
                                     {camp.clicks && camp.impressions ? ((camp.clicks / camp.impressions) * 100).toFixed(2) : '3.82'}%
                                   </span>
                                 </div>
                                 <div>
-                                  <span className="text-[8px] text-slate-500 uppercase tracking-wide block">Convs</span>
+                                  <span className="text-[8px] text-slate-500 block">Convs</span>
                                   <span className="text-[11px] font-bold text-emerald-400">{camp.conversions}</span>
                                 </div>
                               </div>
 
                               <div className="flex items-center gap-3 justify-end shrink-0">
                                 <div className="text-right">
-                                  <span className="text-[8px] text-slate-500 uppercase tracking-wide block">Daily Budget</span>
+                                  <span className="text-[8px] text-slate-500 block">Daily Budget</span>
                                   <span className="text-[10px] font-bold text-slate-400">Rs. {camp.budget}/day</span>
                                 </div>
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
@@ -2915,7 +2797,7 @@ export default function App() {
 
                       {/* 5. Channel Connections Miniature Row */}
                       <div className="bg-slate-950/40 border border-slate-900 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans">
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Channel Gateways</span>
+                        <span className="text-[10px] text-slate-500 font-bold">Channel Gateways</span>
                         
                         <div className="flex flex-wrap gap-4 items-center justify-center">
                           <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-850 px-2.5 py-1 rounded-lg text-[10px]">
@@ -2958,7 +2840,7 @@ export default function App() {
                   {!isMinimalDashboard && (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left Part: Glowing Wave / Mic Orb */}
-                    <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 to-[#0c1224] border border-slate-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden shadow-xl group">
+                    <div className="lg:col-span-5 bg-gradient-to-br from-slate-900 to-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden shadow-xl group">
                       {/* Ambient radial glows */}
                       <div className="absolute -top-10 -left-10 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
                       <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -2966,7 +2848,7 @@ export default function App() {
                       <div className="flex items-center justify-between mb-4 relative z-10">
                         <div className="flex items-center gap-2">
                           <div className={`h-2.5 w-2.5 rounded-full ${isListening ? 'bg-cyan-400 animate-ping' : isAgentSpeaking ? 'bg-purple-400 animate-pulse' : 'bg-slate-600'}`} />
-                          <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase font-bold">Vocal Command Link</span>
+                          <span className="text-[10px] text-slate-400 font-mono font-bold">Vocal Command Link</span>
                         </div>
                         <div className="flex gap-1">
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">WebSpeech V2</span>
@@ -3006,9 +2888,9 @@ export default function App() {
                           {/* Outer solid glow ring */}
                           <div className={`p-4 rounded-full transition-all duration-500 ${
                             isListening 
-                              ? 'bg-cyan-500/15 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.3)]' 
+                              ? 'bg-cyan-500/15 border-cyan-400 shadow-[0_0_30px_rgba(229,150,28,0.3)]' 
                               : isAgentSpeaking 
-                                ? 'bg-purple-500/15 border-purple-400 shadow-[0_0_30px_rgba(139,92,246,0.3)]' 
+                                ? 'bg-purple-500/15 border-purple-400 shadow-[0_0_30px_rgba(229,150,28,0.3)]' 
                                 : 'bg-slate-950 border-slate-800 group-hover:border-slate-700 shadow-md'
                           } border-2`}>
                             <button
@@ -3016,9 +2898,9 @@ export default function App() {
                               onClick={handleToggleVoiceAgent}
                               className={`h-16 w-16 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer ${
                                 isListening 
-                                  ? 'bg-cyan-500 text-white shadow-inner' 
+                                  ? 'bg-cyan-500 text-accent-ink shadow-inner' 
                                   : isAgentSpeaking 
-                                    ? 'bg-purple-600 text-white shadow-inner' 
+                                    ? 'bg-purple-600 text-accent-ink shadow-inner' 
                                     : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white'
                               }`}
                               title="Toggle Voice Controller"
@@ -3064,7 +2946,7 @@ export default function App() {
                       <div className="space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-850">
                           <div>
-                            <h3 className="text-sm font-bold text-white flex items-center gap-1.5 uppercase tracking-wide">
+                            <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                               <Volume2 className="h-4 w-4 text-purple-400 animate-pulse" /> Spoken Operations & Chimes
                             </h3>
                             <p className="text-[10px] text-slate-500 mt-0.5">Control auditory feedback loops and trigger specialized synthesized sound sweeps.</p>
@@ -3164,7 +3046,7 @@ export default function App() {
                       <div className="flex items-center justify-between pb-4 border-b border-slate-800">
                         <div className="flex items-center gap-2">
                           <History className="h-4.5 w-4.5 text-purple-400 animate-pulse" />
-                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Stored Vocal Commands & Speech Logs</h3>
+                          <h3 className="text-sm font-bold text-white">Stored Vocal Commands & Speech Logs</h3>
                         </div>
                         <span className="text-[10px] text-slate-400 font-mono bg-purple-500/10 px-2.5 py-0.5 rounded border border-purple-500/20">
                           {storedVoiceCommands.length} cloud logs found
@@ -3230,15 +3112,15 @@ export default function App() {
                       </div>
                       
                       {!user?.isSubscribed && (
-                        <div className="p-4 bg-[#020617]/90 border border-slate-800 rounded-xl relative z-10 shrink-0 w-full md:w-auto">
-                          <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest block mb-1">CAPACITY STATUS</span>
+                        <div className="p-4 bg-slate-950/90 border border-slate-800 rounded-xl relative z-10 shrink-0 w-full md:w-auto">
+                          <span className="text-[10px] text-amber-500 font-bold block mb-1">Capacity</span>
                           <div className="flex items-baseline gap-1.5 text-lg font-bold text-white">
                             <span>{user?.usageCount || 0} <span className="text-xs text-slate-500">of</span> 5</span>
                             <span className="text-xs text-slate-400 font-normal">implementations spent</span>
                           </div>
                           <button
                             onClick={() => setActiveTab('billing')}
-                            className="w-full mt-3 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1 shadow-lg shadow-indigo-500/15"
+                            className="w-full mt-3 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-accent-ink font-bold rounded-lg text-xs transition flex items-center justify-center gap-1 shadow-lg shadow-indigo-500/15"
                           >
                             Unlock Premium (Rs 999/mo)
                           </button>
@@ -3345,7 +3227,7 @@ export default function App() {
 
                   {/* Mobile Campaign AI Command Assistant */}
                   {!isMinimalDashboard && (
-                    <div className="bg-gradient-to-r from-purple-950/40 to-indigo-950/40 border border-purple-500/20 rounded-2xl p-6 space-y-5 shadow-[0_0_30px_rgba(168,85,247,0.1)] relative overflow-hidden">
+                    <div className="bg-gradient-to-r from-purple-950/40 to-indigo-950/40 border border-purple-500/20 rounded-2xl p-6 space-y-5 shadow-[0_0_30px_rgba(229,150,28,0.1)] relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
                     <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
                     
@@ -3364,7 +3246,7 @@ export default function App() {
                           Instantly build, structure, and deploy campaigns using on-the-go natural language commands.
                         </p>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[9px] font-bold tracking-wider uppercase">
+                      <span className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[9px] font-bold">
                         Mobile UX Optimized
                       </span>
                     </div>
@@ -3384,7 +3266,7 @@ export default function App() {
                             onClick={handleToggleVoiceAgent}
                             className={`p-2 rounded-lg transition-all cursor-pointer ${
                               isListening 
-                                ? 'text-cyan-400 bg-cyan-500/10 animate-pulse border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' 
+                                ? 'text-cyan-400 bg-cyan-500/10 animate-pulse border border-cyan-500/20 shadow-[0_0_10px_rgba(229,150,28,0.15)]' 
                                 : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900 border border-transparent'
                             }`}
                             title="Speak command"
@@ -3394,7 +3276,7 @@ export default function App() {
                           <button
                             type="submit"
                             disabled={commandLoading || !mobileCommand.trim()}
-                            className="p-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg disabled:bg-slate-800 disabled:text-slate-500 transition-colors duration-200 cursor-pointer"
+                            className="p-2 bg-purple-600 hover:bg-purple-500 text-accent-ink rounded-lg disabled:bg-slate-800 disabled:text-slate-500 transition-colors duration-200 cursor-pointer"
                           >
                             {commandLoading ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -3407,7 +3289,7 @@ export default function App() {
 
                       {/* Suggestions pills for easy mobile tap */}
                       <div className="space-y-1.5">
-                        <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">Tap Quick Sample Command:</span>
+                        <span className="text-[10px] text-slate-500 font-semibold block">Tap Quick Sample Command:</span>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
@@ -3446,7 +3328,7 @@ export default function App() {
                           <div className="bg-slate-900/90 px-4 py-2 flex items-center justify-between border-b border-slate-800">
                             <span className="text-emerald-400 font-bold flex items-center gap-1.5">
                               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                              AGENCY EXECUTION DISPATCH RECEIPT
+                              Launch receipt
                             </span>
                             <span className="text-[9px] text-slate-500">SUCCESS • HTTP 200</span>
                           </div>
@@ -3455,7 +3337,7 @@ export default function App() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-3 border-b border-slate-900">
                               <div>
                                 <span className="text-slate-500">Target Channel:</span>{' '}
-                                <span className="text-purple-400 font-bold uppercase">{commandResult.campaign.platform} Ads</span>
+                                <span className="text-purple-400 font-bold">{commandResult.campaign.platform} Ads</span>
                               </div>
                               <div>
                                 <span className="text-slate-500">Campaign Identifier:</span>{' '}
@@ -3474,7 +3356,7 @@ export default function App() {
                             </div>
 
                             <div className="space-y-1.5 bg-slate-950/60 p-3 rounded-lg border border-slate-900">
-                              <div className="text-[10px] text-purple-300 font-bold uppercase tracking-widest">Targeting Matrix</div>
+                              <div className="text-[10px] text-purple-300 font-bold">Targeting Matrix</div>
                               <div>
                                 <span className="text-slate-500">Demographics:</span> <span className="text-slate-300">{commandResult.campaign.demographics}</span>
                               </div>
@@ -3488,23 +3370,23 @@ export default function App() {
                             </div>
 
                             <div className="space-y-2">
-                              <div className="text-[10px] text-purple-300 font-bold uppercase tracking-widest">Compiled Creative Bundle</div>
+                              <div className="text-[10px] text-purple-300 font-bold">Compiled Creative Bundle</div>
                               <div className="bg-slate-950 p-3 rounded-lg border border-slate-900 space-y-2">
                                 <div>
-                                  <span className="text-slate-500 block text-[9px] uppercase font-bold">Primary Headline</span>
+                                  <span className="text-slate-500 block text-[9px] font-bold">Primary Headline</span>
                                   <span className="text-white font-semibold">{commandResult.campaign.adHeadline}</span>
                                 </div>
                                 <div>
-                                  <span className="text-slate-500 block text-[9px] uppercase font-bold">Ad Copy Narrative</span>
+                                  <span className="text-slate-500 block text-[9px] font-bold">Ad Copy Narrative</span>
                                   <p className="text-slate-400 text-[10px] leading-relaxed italic">"{commandResult.campaign.adBodyCopy}"</p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-2 text-[10px]">
                                   <div>
-                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">CTA Button</span>
+                                    <span className="text-slate-500 block text-[8px] font-bold">CTA Button</span>
                                     <span className="text-emerald-400 font-bold">{commandResult.campaign.cta}</span>
                                   </div>
                                   <div>
-                                    <span className="text-slate-500 block text-[8px] uppercase font-bold">Image Gen Prompt</span>
+                                    <span className="text-slate-500 block text-[8px] font-bold">Image Gen Prompt</span>
                                     <span className="text-purple-300 block truncate text-xs" title={commandResult.campaign.creativeVisualPrompt}>
                                       {commandResult.campaign.creativeVisualPrompt}
                                     </span>
@@ -3548,7 +3430,7 @@ export default function App() {
                             setVideoKeyInput(user?.videoGenApiKey || '');
                             setIsKeysModalOpen(true);
                           }}
-                          className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-purple-600/15"
+                          className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-accent-ink text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-lg shadow-purple-600/15"
                         >
                           <Key className="h-3.5 w-3.5" />
                           <span>Connect API Keys</span>
@@ -3564,9 +3446,9 @@ export default function App() {
                               <Facebook className="h-4 w-4" />
                             </div>
                             {integrationStatus.facebook.connected ? (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold tracking-wider">ACTIVE</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">Active</span>
                             ) : (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold tracking-wider">SANDBOX</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold">Sandbox</span>
                             )}
                           </div>
                           <div>
@@ -3584,9 +3466,9 @@ export default function App() {
                               <Target className="h-4 w-4" />
                             </div>
                             {integrationStatus.googleAds.connected ? (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold tracking-wider">ACTIVE</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">Active</span>
                             ) : (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold tracking-wider">SANDBOX</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold">Sandbox</span>
                             )}
                           </div>
                           <div>
@@ -3604,9 +3486,9 @@ export default function App() {
                               <Sparkles className="h-4 w-4" />
                             </div>
                             {integrationStatus.imageGen?.connected ? (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold tracking-wider">ACTIVE</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">Active</span>
                             ) : (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold tracking-wider">SANDBOX</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold">Sandbox</span>
                             )}
                           </div>
                           <div>
@@ -3624,9 +3506,9 @@ export default function App() {
                               <Play className="h-4 w-4 animate-pulse" />
                             </div>
                             {integrationStatus.videoGen?.connected ? (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold tracking-wider">ACTIVE</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">Active</span>
                             ) : (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold tracking-wider">SANDBOX</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold">Sandbox</span>
                             )}
                           </div>
                           <div>
@@ -3644,9 +3526,9 @@ export default function App() {
                               <CreditCard className="h-4 w-4" />
                             </div>
                             {integrationStatus.paymentSystem.connected ? (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold tracking-wider">LIVE</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold">LIVE</span>
                             ) : (
-                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold tracking-wider">SANDBOX</span>
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold">Sandbox</span>
                             )}
                           </div>
                           <div>
@@ -3736,7 +3618,7 @@ export default function App() {
 
                             <div className="space-y-3.5">
                               <div className="space-y-1">
-                                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Facebook Marketing API Key</label>
+                                <label className="text-[10px] text-slate-400 font-bold block">Facebook Marketing API Key</label>
                                 <input
                                   type="password"
                                   value={fbKeyInput}
@@ -3747,7 +3629,7 @@ export default function App() {
                               </div>
 
                               <div className="space-y-1">
-                                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Google Ads Developer Token</label>
+                                <label className="text-[10px] text-slate-400 font-bold block">Google Ads Developer Token</label>
                                 <input
                                   type="password"
                                   value={googleKeyInput}
@@ -3758,7 +3640,7 @@ export default function App() {
                               </div>
 
                               <div className="space-y-1">
-                                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Image Generation API Key</label>
+                                <label className="text-[10px] text-slate-400 font-bold block">Image Generation API Key</label>
                                 <input
                                   type="password"
                                   value={imageKeyInput}
@@ -3769,7 +3651,7 @@ export default function App() {
                               </div>
 
                               <div className="space-y-1">
-                                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Video Generation API Key</label>
+                                <label className="text-[10px] text-slate-400 font-bold block">Video Generation API Key</label>
                                 <input
                                   type="password"
                                   value={videoKeyInput}
@@ -3797,7 +3679,7 @@ export default function App() {
                               <button
                                 type="submit"
                                 disabled={saveKeysLoading}
-                                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 text-accent-ink rounded-lg text-xs font-bold transition flex items-center gap-1.5"
                               >
                                 {saveKeysLoading ? (
                                   <>
@@ -3833,30 +3715,31 @@ export default function App() {
                           <MessageSquare className="h-4.5 w-4.5" />
                         </div>
                         <div>
-                          <h3 className="text-sm font-bold text-white">Sarthavaha AI Analyst</h3>
-                          <p className="text-[10px] text-slate-400">Ask strategic queries, review taglines, or sketch target audience specs</p>
+                          <h3 className="text-sm font-bold text-white">Sarthavaha agent</h3>
+                          <p className="text-[11px] text-slate-400 hidden sm:block">Answers are saved to the panel on the right</p>
                         </div>
                       </div>
 
                       <button
                         onClick={() => setChatMessages([])}
-                        className="text-[10px] px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition flex items-center gap-1 border border-slate-700"
+                        aria-label="Clear chat"
+                        className="text-[11px] px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shrink-0"
                       >
-                        <RefreshCw className="h-3 w-3" /> Clear Chat History
+                        <RefreshCw className="h-3 w-3" /> <span className="hidden sm:inline">Clear chat</span>
                       </button>
                     </div>
 
                     {/* Messages container */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-4">
                       {chatMessages.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6 max-w-lg mx-auto">
+                        <div className="min-h-full flex flex-col items-center justify-center text-center py-4 sm:p-6 space-y-6 max-w-lg mx-auto">
                           <div className="p-4 bg-indigo-500/10 text-indigo-400 rounded-2xl">
                             <BrainCircuit className="h-8 w-8" />
                           </div>
                           <div className="space-y-2">
-                            <h4 className="text-sm font-bold text-white">Instant Digital Strategy Copilot</h4>
+                            <h4 className="text-base font-bold text-white">Ask anything about your next campaign</h4>
                             <p className="text-xs text-slate-400 leading-relaxed">
-                              Start chatting with Gemini loaded with specialized marketing parameters. Get immediate help drafting campaign headlines, structuring target tags, and reviewing budgets.
+                              Draft headlines, pick audiences, sanity-check a budget. Start with one of these or write your own.
                             </p>
                           </div>
 
@@ -3864,27 +3747,27 @@ export default function App() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
                             <button
                               onClick={() => handleChatSuggestion('Write 5 conversion-focused headings for a high-performance fitness coaching business.')}
-                              className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/30 hover:bg-indigo-500/5 text-[11px] text-slate-400 hover:text-white transition text-left"
+                              className="px-3.5 py-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/40 hover:bg-indigo-500/5 text-xs text-slate-300 hover:text-white transition text-left cursor-pointer"
                             >
-                              💡 "Write 5 conversion headings for a high-performance fitness coach."
+                              Write 5 headlines for a fitness coach
                             </button>
                             <button
                               onClick={() => handleChatSuggestion('What are the best targeting interest tags on Facebook for organic luxury skincare products?')}
-                              className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/30 hover:bg-indigo-500/5 text-[11px] text-slate-400 hover:text-white transition text-left"
+                              className="px-3.5 py-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/40 hover:bg-indigo-500/5 text-xs text-slate-300 hover:text-white transition text-left cursor-pointer"
                             >
-                              🎯 "What are Skincare Facebook targeting interests?"
+                              Facebook interests for luxury skincare
                             </button>
                             <button
                               onClick={() => handleChatSuggestion('Explain the standard Google Ads bidding structure for local dentist clinic conversions.')}
-                              className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/30 hover:bg-indigo-500/5 text-[11px] text-slate-400 hover:text-white transition text-left"
+                              className="px-3.5 py-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/40 hover:bg-indigo-500/5 text-xs text-slate-300 hover:text-white transition text-left cursor-pointer"
                             >
-                              📈 "Explain dentist clinic bidding models."
+                              Google Ads bidding for a dental clinic
                             </button>
                             <button
                               onClick={() => handleChatSuggestion('Draft an informative problem-benefit LinkedIn post promoting a premium task planner app.')}
-                              className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/30 hover:bg-indigo-500/5 text-[11px] text-slate-400 hover:text-white transition text-left"
+                              className="px-3.5 py-3 bg-slate-950/60 border border-slate-800 rounded-xl hover:border-indigo-500/40 hover:bg-indigo-500/5 text-xs text-slate-300 hover:text-white transition text-left cursor-pointer"
                             >
-                              ✍️ "Draft a LinkedIn copy for a task planner app."
+                              LinkedIn post for a task planner app
                             </button>
                           </div>
                         </div>
@@ -3896,11 +3779,11 @@ export default function App() {
                           >
                             <div className={`max-w-2xl rounded-2xl p-4 text-xs leading-relaxed ${
                               msg.role === 'user' 
-                                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10' 
+                                ? 'bg-indigo-600 text-accent-ink shadow-lg shadow-indigo-600/10' 
                                 : 'bg-slate-950 border border-slate-800 text-slate-200'
                             }`}>
                               <div className="flex justify-between items-center mb-1 border-b border-slate-800 pb-1 opacity-70">
-                                <span className="font-bold uppercase tracking-wider font-mono text-[9px]">
+                                <span className="font-bold font-mono text-[9px]">
                                   {msg.role === 'user' ? 'You' : 'Sarthavaha AI'}
                                 </span>
                                 <span className="text-[8px]">{msg.timestamp}</span>
@@ -3918,9 +3801,9 @@ export default function App() {
                                     navigator.clipboard.writeText(msg.content);
                                     triggerToast('Copied to clipboard!', 'success');
                                   }}
-                                  className="mt-3 flex items-center gap-1 text-[9px] text-slate-400 hover:text-white font-bold transition uppercase tracking-wider"
+                                  className="mt-3 flex items-center gap-1 text-[9px] text-slate-400 hover:text-white font-bold transition"
                                 >
-                                  <Copy className="h-3 w-3" /> Copy Response text
+                                  <Copy className="h-3 w-3" /> Copy response
                                 </button>
                               )}
                             </div>
@@ -3932,7 +3815,7 @@ export default function App() {
                         <div className="flex justify-start">
                           <div className="max-w-xs bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 flex items-center gap-2">
                             <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
-                            <span>AI marketer is writing strategy drafts...</span>
+                            <span>Writing a reply…</span>
                           </div>
                         </div>
                       )}
@@ -3948,7 +3831,7 @@ export default function App() {
                             type="text"
                             required
                             className="w-full pl-4 pr-12 py-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:bg-slate-900 transition placeholder:text-slate-600"
-                            placeholder="Draft strategic questions or enter copywriting directions here..."
+                            placeholder="Ask about a campaign, an audience or a headline"
                             value={chatInput}
                             onChange={(e) => setChatInput(e.target.value)}
                           />
@@ -3957,7 +3840,7 @@ export default function App() {
                             onClick={handleToggleVoiceAgent}
                             className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all cursor-pointer ${
                               isListening 
-                                ? 'text-cyan-400 bg-cyan-500/10 animate-pulse border border-cyan-500/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' 
+                                ? 'text-cyan-400 bg-cyan-500/10 animate-pulse border border-cyan-500/20 shadow-[0_0_10px_rgba(229,150,28,0.15)]' 
                                 : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'
                             }`}
                             title="Talk to Agent via Microphone"
@@ -3968,7 +3851,7 @@ export default function App() {
                         <button
                           type="submit"
                           disabled={chatLoading}
-                          className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow-lg shadow-indigo-600/15 cursor-pointer"
+                          className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shrink-0 shadow-lg shadow-indigo-600/15 cursor-pointer"
                         >
                           <span>Consult</span>
                           <Send className="h-3.5 w-3.5" />
@@ -3983,8 +3866,8 @@ export default function App() {
                     <div className="flex items-center gap-2 pb-3.5 border-b border-slate-800 shrink-0">
                       <BookOpen className="h-4 w-4 text-cyan-400" />
                       <div>
-                        <h3 className="text-xs font-bold text-white uppercase tracking-wider">Stored Consultations</h3>
-                        <p className="text-[9px] text-slate-500">Persistent advice logs</p>
+                        <h3 className="text-sm font-bold text-white">Saved answers</h3>
+                        <p className="text-[11px] text-slate-500">Chat, research and copy you keep</p>
                       </div>
                     </div>
 
@@ -3993,7 +3876,7 @@ export default function App() {
                         <div className="h-full flex flex-col items-center justify-center text-center p-4">
                           <History className="h-7 w-7 text-slate-700 mb-2 animate-pulse" />
                           <p className="text-[10px] text-slate-500 leading-normal">
-                            No consultations recorded yet. Strategic advice from chat, market reports, and copywriting campaigns will synchronize here.
+                            Nothing saved yet. Answers from chat, research reports and ad copy appear here so you can come back to them.
                           </p>
                         </div>
                       ) : (
@@ -4020,7 +3903,7 @@ export default function App() {
                             }}
                           >
                             <div className="flex items-center justify-between gap-1.5 mb-2">
-                              <span className="text-[8px] font-mono font-bold text-cyan-400 uppercase tracking-widest px-1.5 py-0.5 bg-cyan-500/10 rounded">
+                              <span className="text-[8px] font-mono font-bold text-cyan-400 px-1.5 py-0.5 bg-cyan-500/10 rounded">
                                 {consult.category}
                               </span>
                               <span className="text-[8px] text-slate-500 font-mono">
@@ -4088,7 +3971,7 @@ export default function App() {
 
                         <form onSubmit={handleRunResearch} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Target Keyword / Market Niche
                             </label>
                             <input
@@ -4104,7 +3987,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Target Audience Details
                             </label>
                             <input
@@ -4121,7 +4004,7 @@ export default function App() {
                           <button
                             type="submit"
                             disabled={researchLoading}
-                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition h-9 cursor-pointer shadow-md"
+                            className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition h-9 cursor-pointer shadow-md"
                           >
                             {researchLoading ? (
                               <>
@@ -4150,7 +4033,7 @@ export default function App() {
 
                         <form onSubmit={handleRunInteractiveResearch} className="space-y-3.5">
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Research Prompt or Market Question
                             </label>
                             <textarea
@@ -4185,7 +4068,7 @@ export default function App() {
                             <button
                               type="submit"
                               disabled={researchLlmLoading}
-                              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition h-9 cursor-pointer shadow-md shrink-0"
+                              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition h-9 cursor-pointer shadow-md shrink-0"
                             >
                               {researchLlmLoading ? (
                                 <>
@@ -4263,7 +4146,7 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <History className="h-4 w-4 text-cyan-400" />
                         <div>
-                          <h3 className={`text-xs font-bold uppercase tracking-wider ${isWhite ? 'text-slate-900' : 'text-white'}`}>
+                          <h3 className={`text-xs font-bold   ${isWhite ? 'text-slate-900' : 'text-white'}`}>
                             Saved Research Vault
                           </h3>
                           <p className={`text-[9px] ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>Persistent intel records</p>
@@ -4334,10 +4217,10 @@ export default function App() {
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                                <span className={`text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                <span className={`text-[8px] font-mono font-bold   px-1.5 py-0.5 rounded ${
                                   isWhite ? 'bg-indigo-50 text-indigo-600' : 'bg-cyan-500/10 text-cyan-400'
                                 }`}>
-                                  RESEARCH
+                                  Research
                                 </span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-[8px] text-slate-500 font-mono">
@@ -4416,7 +4299,7 @@ export default function App() {
 
                         <form onSubmit={handleGenerateCreative} className="space-y-4">
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Target Channel
                             </label>
                             <div className="grid grid-cols-3 gap-2">
@@ -4438,7 +4321,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Product / Brand Name
                             </label>
                             <input
@@ -4454,7 +4337,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Product Pitch & Key Benefits
                             </label>
                             <textarea
@@ -4471,7 +4354,7 @@ export default function App() {
 
                           <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
-                              <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                              <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                                 Copywriting Tone
                               </label>
                               <select
@@ -4489,7 +4372,7 @@ export default function App() {
                             </div>
 
                             <div className="space-y-1">
-                              <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                              <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                                 Audience Segment
                               </label>
                               <input
@@ -4507,7 +4390,7 @@ export default function App() {
                           <button
                             type="submit"
                             disabled={createLoading}
-                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
                           >
                             {createLoading ? (
                               <>
@@ -4536,7 +4419,7 @@ export default function App() {
 
                         <form onSubmit={handleRunInteractiveCreative} className="space-y-3.5">
                           <div className="space-y-1">
-                            <label className={`text-[10px] font-bold uppercase tracking-wide ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
+                            <label className={`text-[10px] font-bold   ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>
                               Custom Copywriting Instructions
                             </label>
                             <textarea
@@ -4571,7 +4454,7 @@ export default function App() {
                             <button
                               type="submit"
                               disabled={vaultLlmLoading}
-                              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition h-9 cursor-pointer shadow-md shrink-0"
+                              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition h-9 cursor-pointer shadow-md shrink-0"
                             >
                               {vaultLlmLoading ? (
                                 <>
@@ -4600,19 +4483,19 @@ export default function App() {
                         }`}>
                           
                           <div className="flex justify-between items-center border-b pb-3 border-slate-800/10">
-                            <h4 className={`text-xs font-bold uppercase tracking-widest font-mono flex items-center gap-1.5 ${isWhite ? 'text-slate-900' : 'text-white'}`}>
+                            <h4 className={`text-xs font-bold   font-mono flex items-center gap-1.5 ${isWhite ? 'text-slate-900' : 'text-white'}`}>
                               <Sparkles className="h-4 w-4 text-indigo-400" /> Dynamic Mock Preview
                             </h4>
-                            <span className="text-[10px] font-semibold text-slate-500 uppercase">Interactive Layout</span>
+                            <span className="text-[10px] font-semibold text-slate-500">Interactive Layout</span>
                           </div>
 
                           {/* Render different styles of mockup depending on channel chosen */}
                           {createChannel === 'facebook' && (
                             <div className={`max-w-md mx-auto border rounded-xl overflow-hidden text-xs ${
-                              isWhite ? 'bg-slate-50 border-slate-200' : 'bg-[#020617] border-slate-850'
+                              isWhite ? 'bg-slate-50 border-slate-200' : 'bg-slate-950 border-slate-850'
                             }`}>
                               <div className="p-3 border-b border-slate-850 flex items-center gap-2">
-                                <div className="h-7 w-7 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-[10px]">
+                                <div className="h-7 w-7 rounded-full bg-blue-600 text-accent-ink font-bold flex items-center justify-center text-[10px]">
                                   F
                                 </div>
                                 <div>
@@ -4635,7 +4518,7 @@ export default function App() {
                                 <div className="aspect-[1.91/1] bg-slate-950 flex flex-col items-center justify-center text-center p-4 relative overflow-hidden rounded-lg">
                                   <div className="absolute top-0 right-0 w-48 h-48 bg-gradient-to-br from-indigo-500/20 to-teal-500/20 blur-2xl" />
                                   <BrainCircuit className="h-10 w-10 text-indigo-400 mb-2 relative z-10 animate-pulse" />
-                                  <p className="text-[10px] text-slate-300 font-semibold uppercase tracking-wider max-w-xs relative z-10">
+                                  <p className="text-[10px] text-slate-300 font-semibold max-w-xs relative z-10">
                                     {createProductName || 'PRODUCT CREATIVE'}
                                   </p>
                                   <p className="text-[8px] text-slate-500 font-mono mt-1 max-w-[280px] line-clamp-2 relative z-10 italic">
@@ -4646,13 +4529,13 @@ export default function App() {
                                 {/* Headline & CTA section */}
                                 <div className="p-2.5 bg-slate-950/80 border border-slate-850 rounded-lg flex items-center justify-between">
                                   <div>
-                                    <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider font-mono">zenithmarketer.ai</p>
+                                    <p className="text-[10px] text-slate-400 font-bold font-mono">zenithmarketer.ai</p>
                                     <p className="font-bold text-white text-[11px] line-clamp-1 mt-0.5">
                                       {createOutput.match(/\*\*1\..*?\*\*([\s\S]*?)(?=\*\*2\.)/)?.[1]?.trim().split('\n')[0].replace(/^[-\s*•]+/, '') || 
                                         'Start Organizing Seamless Workflows Today'}
                                     </p>
                                   </div>
-                                  <button className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded text-[10px] uppercase tracking-wider shrink-0 cursor-pointer">
+                                  <button className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded text-[10px] shrink-0 cursor-pointer">
                                     Learn More
                                   </button>
                                 </div>
@@ -4661,7 +4544,7 @@ export default function App() {
                           )}
 
                           {createChannel === 'google' && (
-                            <div className="max-w-md mx-auto border border-slate-800 rounded-xl bg-[#020617] p-4 text-xs font-sans space-y-2 text-left">
+                            <div className="max-w-md mx-auto border border-slate-800 rounded-xl bg-slate-950 p-4 text-xs font-sans space-y-2 text-left">
                               <div className="flex items-center gap-1.5">
                                 <div className="h-4 w-4 bg-slate-800 rounded-full flex items-center justify-center text-slate-400 font-semibold text-[8px]">
                                   G
@@ -4685,7 +4568,7 @@ export default function App() {
                           )}
 
                           {createChannel === 'linkedin' && (
-                            <div className="max-w-md mx-auto border border-slate-800 rounded-xl bg-[#020617] p-4 text-xs space-y-3 text-left">
+                            <div className="max-w-md mx-auto border border-slate-800 rounded-xl bg-slate-950 p-4 text-xs space-y-3 text-left">
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center gap-2">
                                   <div className="h-8 w-8 bg-sky-800 text-white font-bold flex items-center justify-center rounded-full text-xs">
@@ -4706,7 +4589,7 @@ export default function App() {
 
                               <div className="aspect-[1.91/1] bg-slate-900 rounded-lg flex items-center justify-center text-center p-4 relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-32 h-32 bg-blue-500/10 rounded-full blur-xl" />
-                                <p className="text-[11px] font-bold text-slate-200 tracking-wide font-mono uppercase">
+                                <p className="text-[11px] font-bold text-slate-200 font-mono">
                                   {createProductName || 'ZENITH CASE STUDY'}
                                 </p>
                               </div>
@@ -4738,7 +4621,7 @@ export default function App() {
                               <button
                                 onClick={handleLaunchCampaign}
                                 disabled={isLaunchingCampaign}
-                                className="flex-1 md:flex-initial py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold rounded-lg text-[11px] transition flex items-center justify-center gap-1 shadow-md cursor-pointer shrink-0"
+                                className="flex-1 md:flex-initial py-2 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-accent-ink font-bold rounded-lg text-[11px] transition flex items-center justify-center gap-1 shadow-md cursor-pointer shrink-0"
                               >
                                 {isLaunchingCampaign ? (
                                   <>
@@ -4762,7 +4645,7 @@ export default function App() {
                           isWhite ? 'bg-white border-slate-200' : 'bg-slate-900/50 border-slate-800'
                         }`}>
                           <div className="flex justify-between items-center border-b pb-3 border-slate-850">
-                            <h4 className={`text-xs font-bold uppercase tracking-widest font-mono ${isWhite ? 'text-slate-900' : 'text-white'}`}>
+                            <h4 className={`text-xs font-bold   font-mono ${isWhite ? 'text-slate-900' : 'text-white'}`}>
                               Full Copywriting Deliverables
                             </h4>
                             <button
@@ -4789,7 +4672,7 @@ export default function App() {
                         isWhite ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'
                       }`}>
                         <Briefcase className="h-10 w-10 text-slate-500 mb-3" />
-                        <h4 className={`text-xs font-bold uppercase tracking-widest font-mono ${isWhite ? 'text-slate-800' : 'text-slate-300'}`}>
+                        <h4 className={`text-xs font-bold   font-mono ${isWhite ? 'text-slate-800' : 'text-slate-300'}`}>
                           Studio Viewport Empty
                         </h4>
                         <p className="text-xs text-slate-400 max-w-xs mt-1">
@@ -4808,7 +4691,7 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <History className="h-4 w-4 text-cyan-400" />
                         <div>
-                          <h3 className={`text-xs font-bold uppercase tracking-wider ${isWhite ? 'text-slate-900' : 'text-white'}`}>
+                          <h3 className={`text-xs font-bold   ${isWhite ? 'text-slate-900' : 'text-white'}`}>
                             Saved Creative Vault
                           </h3>
                           <p className={`text-[9px] ${isWhite ? 'text-slate-500' : 'text-slate-400'}`}>Persistent copy catalogs</p>
@@ -4873,10 +4756,10 @@ export default function App() {
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1.5 mb-1.5">
-                                <span className={`text-[8px] font-mono font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                                <span className={`text-[8px] font-mono font-bold   px-1.5 py-0.5 rounded ${
                                   isWhite ? 'bg-indigo-50 text-indigo-600' : 'bg-cyan-500/10 text-cyan-400'
                                 }`}>
-                                  CREATIVE COPY
+                                  Creative copy
                                 </span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-[8px] text-slate-500 font-mono">
@@ -4933,7 +4816,7 @@ export default function App() {
                         </p>
 
                         <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[10px] text-slate-400 space-y-1">
-                          <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1">Response Headers & Log</div>
+                          <div className="text-[9px] font-bold text-slate-500 mb-1">Response Headers & Log</div>
                           <div>Status: <span className="text-emerald-400">200 OK</span></div>
                           <div>Platform Execution: <span className="text-sky-400">{campaignLaunchResult.isRealExecution ? 'REAL API' : 'PLAYGROUND SANDBOX'}</span></div>
                           <div className="italic break-words text-[9px] text-slate-500 mt-1">{campaignLaunchResult.logDetails}</div>
@@ -4959,7 +4842,7 @@ export default function App() {
 
                     <form onSubmit={handleRunOptimize} className="grid grid-cols-1 md:grid-cols-5 gap-3.5 items-end">
                       <div className="space-y-1 col-span-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Platform</label>
+                        <label className="text-[10px] font-bold text-slate-400">Platform</label>
                         <select
                           className="w-full px-2 py-2 bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-600 rounded-lg text-xs h-9"
                           value={optPlatform}
@@ -4973,7 +4856,7 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1 col-span-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Spend (Rs.)</label>
+                        <label className="text-[10px] font-bold text-slate-400">Spend (Rs.)</label>
                         <input
                           type="number"
                           required
@@ -4984,7 +4867,7 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1 col-span-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Impressions</label>
+                        <label className="text-[10px] font-bold text-slate-400">Impressions</label>
                         <input
                           type="number"
                           required
@@ -4995,7 +4878,7 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1 col-span-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Clicks</label>
+                        <label className="text-[10px] font-bold text-slate-400">Clicks</label>
                         <input
                           type="number"
                           required
@@ -5006,7 +4889,7 @@ export default function App() {
                       </div>
 
                       <div className="space-y-1 col-span-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Conversions</label>
+                        <label className="text-[10px] font-bold text-slate-400">Conversions</label>
                         <input
                           type="number"
                           required
@@ -5019,7 +4902,7 @@ export default function App() {
                       <button
                         type="submit"
                         disabled={optLoading}
-                        className="md:col-span-5 w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition shadow-lg shadow-indigo-600/15"
+                        className="md:col-span-5 w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition shadow-lg shadow-indigo-600/15"
                       >
                         {optLoading ? (
                           <>
@@ -5044,22 +4927,22 @@ export default function App() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         
                         <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-[0_0_15px_rgba(0,0,0,0.2)]">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold font-mono tracking-wider">Click-Through Rate</span>
+                          <span className="text-[10px] text-slate-400 font-bold font-mono">Click-Through Rate</span>
                           <span className="text-xl font-bold text-white mt-2 font-mono">{optResult.metrics.ctr.toFixed(2)}%</span>
                         </div>
 
                         <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-[0_0_15px_rgba(0,0,0,0.2)]">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold font-mono tracking-wider">Cost Per Click</span>
+                          <span className="text-[10px] text-slate-400 font-bold font-mono">Cost Per Click</span>
                           <span className="text-xl font-bold text-white mt-2 font-mono">Rs. {optResult.metrics.cpc.toFixed(2)}</span>
                         </div>
 
                         <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-[0_0_15px_rgba(0,0,0,0.2)]">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold font-mono tracking-wider">Conversion Ratio</span>
+                          <span className="text-[10px] text-slate-400 font-bold font-mono">Conversion Ratio</span>
                           <span className="text-xl font-bold text-white mt-2 font-mono">{optResult.metrics.conversionRate.toFixed(2)}%</span>
                         </div>
 
                         <div className="p-5 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-[0_0_15px_rgba(0,0,0,0.2)]">
-                          <span className="text-[10px] text-slate-400 uppercase font-bold font-mono tracking-wider">Cost per Acquisition</span>
+                          <span className="text-[10px] text-slate-400 font-bold font-mono">Cost per Acquisition</span>
                           <span className="text-xl font-bold text-white mt-2 font-mono">Rs. {optResult.metrics.costPerConversion.toFixed(2)}</span>
                         </div>
 
@@ -5070,7 +4953,7 @@ export default function App() {
                         <div className="flex justify-between items-center border-b border-slate-800 pb-3">
                           <div className="flex items-center gap-2">
                             <BrainCircuit className="h-5 w-5 text-indigo-400" />
-                            <h4 className="text-xs font-bold text-white uppercase tracking-widest font-mono">AI Strategic Diagnostic Audit</h4>
+                            <h4 className="text-xs font-bold text-white font-mono">AI Strategic Diagnostic Audit</h4>
                           </div>
                         <div className="flex items-center gap-3">
                           <button
@@ -5168,7 +5051,7 @@ export default function App() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Facebook App Access Token</label>
+                            <label className="text-[10px] font-bold text-slate-400 block">Facebook App Access Token</label>
                             <input
                               type="password"
                               className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-indigo-600"
@@ -5180,7 +5063,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Google Ads Developer Key</label>
+                            <label className="text-[10px] font-bold text-slate-400 block">Google Ads Developer Key</label>
                             <input
                               type="password"
                               className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-indigo-600"
@@ -5192,7 +5075,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Payment Gateway Secret Key</label>
+                            <label className="text-[10px] font-bold text-slate-400 block">Payment Gateway Secret Key</label>
                             <input
                               type="password"
                               className="w-full px-3 py-2 bg-slate-950 border border-slate-850 rounded-lg text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-indigo-600"
@@ -5213,7 +5096,7 @@ export default function App() {
 
                         <button
                           type="submit"
-                          className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs transition shadow-lg shadow-indigo-600/15"
+                          className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-500 text-accent-ink font-bold rounded-lg text-xs transition shadow-lg shadow-indigo-600/15"
                         >
                           Synchronize Integration Keys
                         </button>
@@ -5241,12 +5124,12 @@ export default function App() {
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-950 border-b border-slate-850 text-slate-400 font-bold">
-                              <th className="p-3 font-mono text-[10px]">USER EMAIL</th>
+                              <th className="p-3 font-mono text-[10px]">Email</th>
                               <th className="p-3 font-mono text-[10px]">ROLE</th>
-                              <th className="p-3 font-mono text-[10px]">IMPLEMENTATIONS COUNT</th>
-                              <th className="p-3 font-mono text-[10px]">SUBSCRIBED</th>
-                              <th className="p-3 font-mono text-[10px]">TIER TYPE</th>
-                              <th className="p-3 font-mono text-[10px]">CREATION TIME</th>
+                              <th className="p-3 font-mono text-[10px]">Generations</th>
+                              <th className="p-3 font-mono text-[10px]">Subscribed</th>
+                              <th className="p-3 font-mono text-[10px]">Plan</th>
+                              <th className="p-3 font-mono text-[10px]">Joined</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-850">
@@ -5265,12 +5148,12 @@ export default function App() {
                                 <td className="p-3 text-slate-300">{u.usageCount} <span className="text-[10px] text-slate-500">/ 5 used</span></td>
                                 <td className="p-3">
                                   {u.isSubscribed ? (
-                                    <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-bold uppercase">YES</span>
+                                    <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-bold">YES</span>
                                   ) : (
-                                    <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-bold uppercase">NO</span>
+                                    <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 font-bold">NO</span>
                                   )}
                                 </td>
-                                <td className="p-3 uppercase text-[10px] font-bold text-slate-300 tracking-wider font-mono">{u.subscriptionType || 'none'}</td>
+                                <td className="p-3 text-[10px] font-bold text-slate-300 font-mono">{u.subscriptionType || 'none'}</td>
                                 <td className="p-3 text-slate-500 text-[10px] font-mono">{new Date(u.createdAt).toLocaleDateString()}</td>
                               </tr>
                             ))}
@@ -5303,7 +5186,7 @@ export default function App() {
                           adminLogs.map((log) => (
                             <div key={log.id} className="p-2 bg-slate-900/40 border border-slate-850 rounded flex flex-col md:flex-row justify-between gap-2">
                               <div>
-                                <span className="text-[8px] px-1.5 py-0.5 bg-slate-950 border border-slate-850 rounded text-slate-400 font-bold uppercase tracking-wider">{log.action}</span>
+                                <span className="text-[8px] px-1.5 py-0.5 bg-slate-950 border border-slate-850 rounded text-slate-400 font-bold">{log.action}</span>
                                 <span className="text-[10px] text-slate-200 ml-2">{log.details}</span>
                               </div>
                               <div className="flex items-center gap-2 text-slate-500 text-[9px] md:text-right shrink-0">
@@ -5326,34 +5209,13 @@ export default function App() {
               {activeTab === 'billing' && (
                 <div className="max-w-4xl mx-auto space-y-8">
                   
-                  {/* Ethereal Horizon Company Logo in Upgrade Option */}
-                  <div className="flex flex-col items-center justify-center pt-2 select-none">
-                    <div className="relative flex items-center select-none py-2 px-5 bg-slate-950/90 rounded-2xl border border-purple-500/20 shadow-[0_0_20px_rgba(168,85,247,0.15)] overflow-hidden font-display">
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.15),transparent_70%)] pointer-events-none" />
-                      
-                      {/* Tiny flare */}
-                      <div className="absolute top-[42%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
-                        <div className="w-1 h-1 bg-white rounded-full shadow-[0_0_10px_4px_rgba(255,255,255,1),0_0_20px_8px_rgba(168,85,247,0.8)]" />
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-[1px] bg-gradient-to-r from-transparent via-purple-300 to-transparent blur-[0.5px]" />
-                      </div>
-
-                      <div className="flex flex-col items-center px-4">
-                        <span className="text-xs tracking-[0.25em] font-extrabold text-white relative z-20">ETHEREAL</span>
-                        <span className="text-[7px] tracking-[0.4em] text-purple-300 font-orbitron font-extrabold relative z-20 -mt-0.5">HORIZON</span>
-                      </div>
-                    </div>
-                    <span className="text-[8px] tracking-[0.25em] text-purple-400 font-orbitron uppercase font-bold mt-2.5">
-                      ETHEREAL HORIZON CORPORATION
-                    </span>
-                  </div>
-
                   {/* Upgrade Hero */}
                   <div className="text-center space-y-2 max-w-lg mx-auto">
                     <h2 className="text-xl md:text-2xl font-bold font-sans tracking-tight text-white">
-                      Elevate Your Marketing Command Center
+                      Remove the free-plan limit
                     </h2>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      Upgrade to Premium to instantly lift the 5-use limit. Get unlimited creative copies, research reports, campaign diagnostics, and sandbox deployments.
+                      Pro gives you unlimited market research, ad copy, campaign checks and test launches. Cancel any time.
                     </p>
                   </div>
 
@@ -5401,7 +5263,7 @@ export default function App() {
                         onClick={() => { setBillingPlan('monthly'); triggerToast('Plan selected: Monthly', 'info'); }}
                         className={`w-full mt-8 py-2.5 font-bold rounded-lg text-xs transition ${
                           billingPlan === 'monthly' 
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/15' 
+                            ? 'bg-indigo-600 text-accent-ink shadow-lg shadow-indigo-600/15' 
                             : 'bg-slate-950 text-slate-400 hover:bg-slate-900 border border-slate-800'
                         }`}
                       >
@@ -5410,7 +5272,7 @@ export default function App() {
                     </div>
 
                     {/* Tier Yearly */}
-                    <div className="bg-slate-950 text-white border border-slate-800 p-8 rounded-2xl flex flex-col justify-between relative overflow-hidden shadow-[0_0_25px_rgba(16,185,129,0.05)]">
+                    <div className="bg-slate-950 text-white border border-slate-800 p-8 rounded-2xl flex flex-col justify-between relative overflow-hidden shadow-[0_0_25px_rgba(63,175,140,0.05)]">
                       <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
                       
                       <div className="space-y-4 relative z-10">
@@ -5471,7 +5333,7 @@ export default function App() {
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         
                         <div className="space-y-1 md:col-span-2">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Credit Card Number</label>
+                          <label className="text-[10px] font-bold text-slate-400 block">Credit Card Number</label>
                           <input
                             type="text"
                             required
@@ -5484,7 +5346,7 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1 col-span-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Expiry MM/YY</label>
+                          <label className="text-[10px] font-bold text-slate-400 block">Expiry MM/YY</label>
                           <input
                             type="text"
                             required
@@ -5497,7 +5359,7 @@ export default function App() {
                         </div>
 
                         <div className="space-y-1 col-span-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">CVV</label>
+                          <label className="text-[10px] font-bold text-slate-400 block">CVV</label>
                           <input
                             type="password"
                             required
@@ -5526,7 +5388,7 @@ export default function App() {
                       <button
                         type="submit"
                         disabled={billingLoading}
-                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg text-xs transition shadow-lg shadow-indigo-600/15 flex items-center justify-center gap-1.5"
+                        className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-accent-ink font-bold rounded-lg text-xs transition shadow-lg shadow-indigo-600/15 flex items-center justify-center gap-1.5"
                       >
                         {billingLoading ? (
                           <>
@@ -5552,13 +5414,13 @@ export default function App() {
                 <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
                   
                   {/* Header / Subtitle with Glowing Accent */}
-                  <div className="relative p-6 bg-[#090d1a] border border-slate-800 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.2)]">
+                  <div className="relative p-6 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-[0_0_20px_rgba(0,0,0,0.2)]">
                     <div className="absolute top-0 left-0 w-2 h-full bg-gradient-to-b from-cyan-400 to-indigo-500" />
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <BookOpen className="h-4.5 w-4.5 text-cyan-400" />
-                          <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase font-bold">Integration Hub</span>
+                          <span className="text-[10px] text-cyan-400 font-mono font-bold">Integration Hub</span>
                         </div>
                         <h2 className="text-xl md:text-2xl font-extrabold text-white">Documentation & API Key Setup</h2>
                         <p className="text-xs text-slate-400 mt-1">
@@ -5584,7 +5446,7 @@ export default function App() {
                         </div>
 
                         <div className="mb-4">
-                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5 uppercase tracking-wide font-sans">
+                          <h3 className="text-sm font-bold text-white flex items-center gap-1.5 font-sans">
                             <Database className="h-4 w-4 text-purple-400" /> Key Vault Config
                           </h3>
                           <p className="text-[11px] text-slate-500 mt-1 font-sans">
@@ -5594,7 +5456,7 @@ export default function App() {
 
                         <form onSubmit={handleSaveUserKeys} className="space-y-4">
                           <div className="space-y-1">
-                            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Facebook Marketing API Token</label>
+                            <label className="text-[10px] text-slate-400 font-bold block">Facebook Marketing API Token</label>
                             <input
                               type="password"
                               value={fbKeyInput}
@@ -5618,7 +5480,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Google Ads Developer Token</label>
+                            <label className="text-[10px] text-slate-400 font-bold block">Google Ads Developer Token</label>
                             <input
                               type="password"
                               value={googleKeyInput}
@@ -5642,7 +5504,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">AI Creative Generation API Key</label>
+                            <label className="text-[10px] text-slate-400 font-bold block">AI Creative Generation API Key</label>
                             <input
                               type="password"
                               value={imageKeyInput}
@@ -5653,7 +5515,7 @@ export default function App() {
                           </div>
 
                           <div className="space-y-1">
-                            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Synthetic Video Generation Key</label>
+                            <label className="text-[10px] text-slate-400 font-bold block">Synthetic Video Generation Key</label>
                             <input
                               type="password"
                               value={videoKeyInput}
@@ -5672,7 +5534,7 @@ export default function App() {
                           <button
                             type="submit"
                             disabled={saveKeysLoading}
-                            className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:brightness-110 disabled:bg-slate-800 text-white font-extrabold uppercase rounded-lg text-xs tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/10"
+                            className="w-full py-2.5 bg-gradient-to-r from-cyan-500 to-indigo-500 hover:brightness-110 disabled:bg-slate-800 text-accent-ink font-extrabold rounded-lg text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-cyan-500/10"
                           >
                             {saveKeysLoading ? (
                               <>
@@ -5691,7 +5553,7 @@ export default function App() {
                         {/* Interactive testing output panels */}
                         {(fbTestStatus !== 'idle' || googleTestStatus !== 'idle') && (
                           <div className="mt-4 pt-4 border-t border-slate-850 space-y-2">
-                            <div className="text-[9px] text-slate-500 uppercase tracking-wider font-mono font-bold">Local Connection Diagnostics</div>
+                            <div className="text-[9px] text-slate-500 font-mono font-bold">Local Connection Diagnostics</div>
                             {fbTestStatus !== 'idle' && (
                               <div className={`p-2.5 rounded-lg flex items-center justify-between text-[11px] ${
                                 fbTestStatus === 'testing' ? 'bg-cyan-500/5 text-cyan-400 border border-cyan-500/15 animate-pulse' :
@@ -5702,7 +5564,7 @@ export default function App() {
                                   <Facebook className="h-3.5 w-3.5 animate-pulse" />
                                   <span>Meta API Diagnostic</span>
                                 </span>
-                                <span className="font-bold uppercase font-mono text-[9px]">
+                                <span className="font-bold font-mono text-[9px]">
                                   {fbTestStatus === 'testing' && 'Handshaking...'}
                                   {fbTestStatus === 'success' && '✓ ONLINE'}
                                   {fbTestStatus === 'error' && '✕ FAILURE'}
@@ -5719,7 +5581,7 @@ export default function App() {
                                   <Database className="h-3.5 w-3.5" />
                                   <span>Google Ads API Diagnostic</span>
                                 </span>
-                                <span className="font-bold uppercase font-mono text-[9px]">
+                                <span className="font-bold font-mono text-[9px]">
                                   {googleTestStatus === 'testing' && 'Handshaking...'}
                                   {googleTestStatus === 'success' && '✓ ONLINE'}
                                   {googleTestStatus === 'error' && '✕ FAILURE'}
@@ -5743,7 +5605,7 @@ export default function App() {
                               <Facebook className="h-4.5 w-4.5" />
                             </div>
                             <div>
-                              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-sans">Meta Marketing API Guide</h3>
+                              <h3 className="text-sm font-bold text-white font-sans">Meta Marketing API Guide</h3>
                               <p className="text-[10px] text-slate-500 font-mono">Protocol V19.0 Client Integration</p>
                             </div>
                           </div>
@@ -5806,14 +5668,14 @@ export default function App() {
                         {/* Copyable code widget */}
                         <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 space-y-2">
                           <div className="flex justify-between items-center">
-                            <span className="text-[9px] text-slate-500 font-mono font-bold uppercase">Meta Diagnostic Curl Trigger</span>
+                            <span className="text-[9px] text-slate-500 font-mono font-bold">Meta Diagnostic Curl Trigger</span>
                             <button
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(`curl -G -d "access_token=<YOUR_TOKEN>" "https://graph.facebook.com/v19.0/me"`);
                                 triggerToast('Copied curl command to clipboard!', 'success');
                               }}
-                              className="text-[9px] text-cyan-400 hover:text-cyan-300 font-bold uppercase flex items-center gap-1 font-mono cursor-pointer bg-transparent border-none"
+                              className="text-[9px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 font-mono cursor-pointer bg-transparent border-none"
                             >
                               <Copy className="h-3 w-3" /> Copy Snippet
                             </button>
@@ -5830,11 +5692,11 @@ export default function App() {
                       <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 space-y-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 bg-[#EAB308]/10 text-[#EAB308] rounded-lg flex items-center justify-center">
+                            <div className="h-8 w-8 bg-amber-400/10 text-amber-400 rounded-lg flex items-center justify-center">
                               <Database className="h-4.5 w-4.5" />
                             </div>
                             <div>
-                              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-sans">Google Ads API Guide</h3>
+                              <h3 className="text-sm font-bold text-white font-sans">Google Ads API Guide</h3>
                               <p className="text-[10px] text-slate-500 font-mono">MCC Developer Node Integration</p>
                             </div>
                           </div>
@@ -5853,7 +5715,7 @@ export default function App() {
                         <div className="space-y-3.5 text-xs text-slate-300 font-sans">
                           
                           <div className="flex gap-3">
-                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-[#EAB308] flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">1</span>
+                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">1</span>
                             <div className="space-y-0.5">
                               <h4 className="font-bold text-white text-[12px]">Request Developer Token</h4>
                               <p className="text-slate-400 text-[11px] leading-relaxed">
@@ -5863,7 +5725,7 @@ export default function App() {
                           </div>
 
                           <div className="flex gap-3">
-                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-[#EAB308] flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">2</span>
+                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">2</span>
                             <div className="space-y-0.5">
                               <h4 className="font-bold text-white text-[12px]">Enable Google Ads API</h4>
                               <p className="text-slate-400 text-[11px] leading-relaxed">
@@ -5873,7 +5735,7 @@ export default function App() {
                           </div>
 
                           <div className="flex gap-3">
-                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-[#EAB308] flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">3</span>
+                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">3</span>
                             <div className="space-y-0.5">
                               <h4 className="font-bold text-white text-[12px]">Set Up OAuth Credentials</h4>
                               <p className="text-slate-400 text-[11px] leading-relaxed">
@@ -5883,7 +5745,7 @@ export default function App() {
                           </div>
 
                           <div className="flex gap-3">
-                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-[#EAB308] flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">4</span>
+                            <span className="h-5 w-5 rounded-full bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5 font-mono">4</span>
                             <div className="space-y-0.5">
                               <h4 className="font-bold text-white text-[12px]">Authorize Refresh Token</h4>
                               <p className="text-slate-400 text-[11px] leading-relaxed">
@@ -5897,14 +5759,14 @@ export default function App() {
                         {/* Copyable node template code widget */}
                         <div className="bg-slate-950 border border-slate-850 rounded-xl p-3 space-y-2 font-mono">
                           <div className="flex justify-between items-center">
-                            <span className="text-[9px] text-slate-500 font-mono font-bold uppercase">Google Ads Node SDK Template</span>
+                            <span className="text-[9px] text-slate-500 font-mono font-bold">Google Ads Node SDK Template</span>
                             <button
                               type="button"
                               onClick={() => {
                                 navigator.clipboard.writeText(`const { GoogleAdsApi } = require('google-ads-api');\nconst client = new GoogleAdsApi({\n  client_id: '...', \n  client_secret: '...', \n  developer_token: '...'\n});`);
                                 triggerToast('Copied Node snippet to clipboard!', 'success');
                               }}
-                              className="text-[9px] text-cyan-400 hover:text-cyan-300 font-bold uppercase flex items-center gap-1 font-mono cursor-pointer bg-transparent border-none"
+                              className="text-[9px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 font-mono cursor-pointer bg-transparent border-none"
                             >
                               <Copy className="h-3 w-3" /> Copy Snippet
                             </button>
@@ -5931,118 +5793,49 @@ const client = new GoogleAdsApi({
             </motion.div>
           </AnimatePresence>
 
-          {/* Brand Footer for Ethereal Horizon Corporation */}
-          <footer className={`mt-16 pt-8 border-t pb-8 text-center space-y-4 select-none relative z-10 transition-all duration-300 ${
-            isWhite ? 'border-slate-200' : 'border-slate-900'
+          {/* Footer */}
+          <footer className={`mt-16 pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-[12px] text-slate-500 ${
+            isWhite ? 'border-slate-200' : 'border-slate-800/70'
           }`}>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 max-w-5xl mx-auto px-6">
-              <div className="flex items-center gap-3">
-                <div className={`relative flex items-center select-none py-1.5 px-3 rounded-xl border overflow-hidden font-display transition-all duration-300 ${
-                  isWhite 
-                    ? 'bg-slate-100 border-indigo-200/50 shadow-sm' 
-                    : 'bg-slate-950/80 border-purple-500/15 shadow-[0_0_10px_rgba(168,85,247,0.1)]'
-                }`}>
-                  <div className={`absolute inset-0 pointer-events-none ${
-                    isWhite ? 'bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.05),transparent_70%)]' : 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.15),transparent_70%)]'
-                  }`} />
-                  <div className="flex flex-col items-center">
-                    <span className={`text-[9px] tracking-[0.2em] font-extrabold relative z-20 transition-colors duration-300 ${isWhite ? 'text-slate-850' : 'text-white'}`}>ETHEREAL</span>
-                    <span className={`text-[5.5px] tracking-[0.35em] font-orbitron font-extrabold relative z-20 -mt-1 transition-colors duration-300 ${isWhite ? 'text-indigo-600' : 'text-purple-300'}`}>HORIZON</span>
-                  </div>
-                </div>
-                <div className="text-left">
-                  <span className={`text-xs font-bold block transition-colors duration-300 ${isWhite ? 'text-slate-800' : 'text-white'}`}>Ethereal Horizon Corporation</span>
-                  <span className="text-[9px] text-slate-500 font-mono block">Sarthavaha Marketing Suite © {new Date().getFullYear()}</span>
-                </div>
-              </div>
-              <div className="flex flex-wrap justify-center sm:justify-end items-center gap-4 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                <span className="hover:text-purple-400 transition cursor-pointer">Security Protocol</span>
-                <span className="text-slate-800 select-none">•</span>
-                <span className="hover:text-purple-400 transition cursor-pointer">API Nodes</span>
-                <span className="text-slate-800 select-none">•</span>
-                <span className="hover:text-purple-400 transition cursor-pointer">SLA Agreement</span>
-                <span className="text-slate-800 select-none">•</span>
-                <button
-                  type="button"
-                  onClick={() => setIsThemeModalOpen(true)}
-                  className="hover:text-purple-400 flex items-center gap-1 transition cursor-pointer bg-transparent border-none text-[10px] font-semibold uppercase tracking-wider text-slate-400"
-                  title="Update Theme Settings"
-                >
-                  <Settings className="h-3 w-3 animate-spin-slow" />
-                  <span>Theme Settings</span>
-                </button>
-              </div>
-            </div>
-            <p className="text-[10px] text-slate-600 leading-relaxed max-w-3xl mx-auto px-6 font-sans">
-              Sarthavaha is an advanced marketing intelligence & automated campaign synthesis suite engineered under the Ethereal Horizon Corporation brand ecosystem. Powered by Gemini large-language frameworks and custom multi-channel payload synchronization.
-            </p>
+            <span>Sarthavaha by Ethereal Horizon, © {new Date().getFullYear()}</span>
+            <button
+              type="button"
+              onClick={() => setIsThemeModalOpen(true)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-slate-900 transition cursor-pointer"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              Appearance
+            </button>
           </footer>
         </main>
       </div>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 flex items-center justify-around px-2 pb-2 z-40">
-        <button
-          onClick={() => {
-            setActiveTab('terminal');
-            triggerToast('Switched to Agent Terminal', 'info');
-          }}
-          className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-            activeTab === 'terminal' ? 'text-[#06B6D4] scale-105' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <MessageSquare className="h-5 w-5" />
-          <span className="text-[9px] mt-1 font-bold">Chat</span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('analytics');
-            triggerToast('Viewing Platform Analytics', 'info');
-          }}
-          className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-            activeTab === 'analytics' ? 'text-[#06B6D4] scale-105' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <LayoutDashboard className="h-5 w-5" />
-          <span className="text-[9px] mt-1 font-bold">Dashboard</span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('research');
-            triggerToast('Initiating Market Research', 'info');
-          }}
-          className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-            activeTab === 'research' ? 'text-[#06B6D4] scale-105' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Search className="h-5 w-5" />
-          <span className="text-[9px] mt-1 font-bold">Research</span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('vault');
-            triggerToast('Accessing Creative Storage', 'info');
-          }}
-          className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-            activeTab === 'vault' ? 'text-[#06B6D4] scale-105' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Layers className="h-5 w-5" />
-          <span className="text-[9px] mt-1 font-bold">Storage</span>
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('billing');
-            triggerToast('Viewing Billing & Plans', 'info');
-          }}
-          className={`flex flex-col items-center justify-center w-16 h-full transition-all ${
-            activeTab === 'billing' ? 'text-purple-400 scale-105' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Zap className="h-5 w-5" />
-          <span className="text-[9px] mt-1 font-bold">Billing</span>
-        </button>
-      </div>
+      <nav
+        aria-label="Workspace"
+        className={`md:hidden fixed bottom-0 inset-x-0 border-t flex items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)] z-40 ${
+          isWhite ? 'bg-white/95 border-slate-200' : 'bg-slate-950/95 border-slate-800/80 backdrop-blur-xl'
+        }`}
+      >
+        {WORKSPACE_NAV.map(item => {
+          const Icon = item.icon;
+          const active = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex-1 flex flex-col items-center justify-center h-16 transition cursor-pointer ${
+                active ? 'text-amber-400' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {active && <span className="absolute top-0 h-[3px] w-8 rounded-b-full bg-amber-400" aria-hidden="true" />}
+              <Icon className="h-5 w-5" />
+              <span className="text-[11px] mt-1 font-semibold">{item.short}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       {/* DELAYED SIGN-UP / AUTH HUB INTERCEPT MODAL */}
       {showDelayedSignup && (
@@ -6050,10 +5843,10 @@ const client = new GoogleAdsApi({
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="w-full max-w-md bg-slate-900 border border-cyan-500/30 rounded-2xl p-6 shadow-[0_0_50px_rgba(6,182,212,0.2)] relative"
+            className="w-full max-w-md bg-slate-900 border border-cyan-500/30 rounded-2xl p-6 shadow-[0_0_50px_rgba(229,150,28,0.2)] relative"
           >
             <div className="text-center mb-6">
-              <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase">
+              <span className="text-[10px] text-cyan-400 font-mono">
                 {interceptedAction ? 'Action Pending Authorization' : 'Sarthavaha Command Hub'}
               </span>
               <h3 className="text-xl font-bold text-white mt-1">
@@ -6071,7 +5864,7 @@ const client = new GoogleAdsApi({
               className="space-y-4"
             >
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Email Address</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
                 <input
                   type="email"
                   required
@@ -6083,7 +5876,7 @@ const client = new GoogleAdsApi({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Password</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Password</label>
                 <input
                   type="password"
                   required
@@ -6099,7 +5892,7 @@ const client = new GoogleAdsApi({
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-bold rounded-lg uppercase tracking-wider text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
+                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-indigo-500 text-accent-ink font-bold rounded-lg text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
               >
                 {authLoading 
                   ? (isSignUp ? 'Creating Profile...' : 'Authenticating...') 
@@ -6108,14 +5901,14 @@ const client = new GoogleAdsApi({
 
               <div className="relative my-4 flex items-center justify-center">
                 <span className="absolute w-full border-t border-slate-800"></span>
-                <span className="relative bg-slate-900 px-3 text-[10px] text-slate-500 font-mono uppercase tracking-wider">or continue with</span>
+                <span className="relative bg-slate-900 px-3 text-[10px] text-slate-500 font-mono">or continue with</span>
               </div>
 
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={authLoading}
-                className="w-full py-2.5 bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-200 font-bold rounded-lg uppercase tracking-wider text-xs flex items-center justify-center gap-2 cursor-pointer transition-all animate-fade-in"
+                className="w-full py-2.5 bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-200 font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer transition-all animate-fade-in"
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24">
                   <path fill="currentColor" d="M12.24 10.285V13.4h6.887C18.2 15.614 15.645 18 12.24 18c-3.86 0-7-3.14-7-7s3.14-7 7-7c1.73 0 3.3.63 4.52 1.667l2.42-2.42C17.41 1.623 14.965 1 12.24 1c-5.52 0-10 4.48-10 10s4.48 10 10 10c5.773 0 9.6-4.06 9.6-9.76 0-.66-.06-1.155-.16-1.655h-9.44z" />
@@ -6188,7 +5981,7 @@ const client = new GoogleAdsApi({
                 onClick={() => handleThemeChange('default')}
                 className={`w-full flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer ${
                   dashboardTheme === 'default'
-                    ? 'border-purple-500 bg-purple-500/10 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
+                    ? 'border-purple-500 bg-purple-500/10 shadow-[0_0_15px_rgba(229,150,28,0.15)]'
                     : dashboardTheme === 'white'
                     ? 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     : 'border-slate-800 hover:border-slate-700 hover:bg-slate-850'
@@ -6212,7 +6005,7 @@ const client = new GoogleAdsApi({
                 onClick={() => handleThemeChange('minimal')}
                 className={`w-full flex items-center justify-between p-4 rounded-xl border text-left transition-all duration-300 cursor-pointer ${
                   dashboardTheme === 'minimal'
-                    ? 'border-cyan-500 bg-cyan-500/10 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
+                    ? 'border-cyan-500 bg-cyan-500/10 shadow-[0_0_15px_rgba(229,150,28,0.15)]'
                     : dashboardTheme === 'white'
                     ? 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     : 'border-slate-800 hover:border-slate-700 hover:bg-slate-850'
@@ -6257,7 +6050,7 @@ const client = new GoogleAdsApi({
               <button
                 type="button"
                 onClick={() => setIsThemeModalOpen(false)}
-                className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-xl cursor-pointer transition ${
+                className={`px-4 py-2 text-[11px] font-bold   rounded-xl cursor-pointer transition ${
                   dashboardTheme === 'white'
                     ? 'bg-slate-900 text-white hover:bg-slate-800'
                     : 'bg-slate-800 text-slate-100 hover:bg-slate-700'
