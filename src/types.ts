@@ -10,6 +10,11 @@ export interface User {
   googleAdsApiKey?: string;
   imageGenApiKey?: string;
   videoGenApiKey?: string;
+  phoneNumber?: string;
+  signupMethod?: 'google' | 'phone' | 'email';
+  signupSource?: string;
+  signupMedium?: string;
+  signupCampaign?: string;
 }
 
 export interface ChatMessage {

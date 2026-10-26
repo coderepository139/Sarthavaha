@@ -51,18 +51,68 @@ import {
   Settings,
   Trash2,
   FileText,
-  Rocket
+  Rocket,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ChatMessage, CampaignData, SystemLog, IntegrationStatus } from './types';
-import { exportCompetitiveIntelligenceReport, exportCampaignDiagnosticReport } from './lib/pdfExport';
+// The PDF library is large, so it loads only when someone exports a report.
+const loadPdfExport = () => import('./lib/pdfExport');
 import { auth, googleProvider } from './lib/firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
-  signOut as firebaseSignOut 
+  signInWithRedirect,
+  getRedirectResult,
+  signInWithPhoneNumber,
+  RecaptchaVerifier,
+  onIdTokenChanged,
+  signOut as firebaseSignOut,
+  type ConfirmationResult,
+  type User as FirebaseUser
 } from 'firebase/auth';
+import { getAttribution, trackFirstQuery, trackLogin, trackSignUp, type SignUpMethod } from './lib/analytics';
+
+/** Phone OTP needs the Firebase Blaze plan and the Phone provider switched on, so it is opt-in. */
+const PHONE_AUTH_ENABLED = (import.meta as any).env?.VITE_ENABLE_PHONE_AUTH === 'true';
+
+/** Instagram, Facebook and LinkedIn open links in their own browser, where Google blocks sign-in. */
+function detectInAppBrowser(): { inApp: boolean; app: string; android: boolean } {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  const app = /Instagram/i.test(ua) ? 'Instagram' : /FBAN|FBAV|FB_IAB/i.test(ua) ? 'Facebook' : /LinkedInApp/i.test(ua) ? 'LinkedIn' : '';
+  return { inApp: !!app, app, android: /Android/i.test(ua) };
+}
+
+/** Friendly, actionable messages for the Firebase errors people actually hit. */
+function authErrorMessage(err: any): string {
+  const code: string = err?.code || '';
+  switch (code) {
+    case 'auth/invalid-phone-number': return 'That number doesn’t look right. Enter the 10-digit mobile number without 0 or +91.';
+    case 'auth/missing-phone-number': return 'Enter your mobile number.';
+    case 'auth/too-many-requests': return 'Too many attempts from this device. Wait a few minutes and try again.';
+    case 'auth/quota-exceeded': return 'We’ve hit today’s SMS limit. Please continue with Google for now.';
+    case 'auth/invalid-verification-code': return 'That code is incorrect. Check the SMS and try again.';
+    case 'auth/code-expired': return 'That code has expired. Send a new one.';
+    case 'auth/operation-not-allowed':
+    case 'auth/billing-not-enabled': return 'Phone sign-in isn’t switched on yet. Please continue with Google.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request': return '';
+    case 'auth/network-request-failed': return 'No connection. Check your internet and try again.';
+    case 'auth/unauthorized-domain': return 'Sign-in isn’t allowed on this web address yet. Please use sarthavaha.com.';
+    case 'auth/email-already-in-use': return 'An account with this email already exists. Sign in instead.';
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found': return 'Email or password is incorrect.';
+    case 'auth/weak-password': return 'Use at least 6 characters for your password.';
+    case 'auth/internal-error':
+    case 'auth/captcha-check-failed':
+    case 'auth/invalid-app-credential': return 'We couldn’t reach the sign-in service. Check your connection and try again, or continue with Google.';
+    default:
+      // Our own server errors are already written for people; Firebase's raw codes are not.
+      return err?.code ? 'Sign-in didn’t work. Please try again.' : (err?.message || 'Sign-in didn’t work. Please try again.');
+  }
+}
 
 /**
  * Brand mark: a caravan route with three waypoints — the guide (sārthavāha)
@@ -105,7 +155,7 @@ const WORKSPACE_NAV: { id: WorkspaceTab; label: string; short: string; hint: str
 
 const MOCK_GUEST_USER: User = {
   id: 'guest_user',
-  email: 'guest@sarthavaha.io',
+  email: 'guest@sarthavaha.com',
   role: 'user',
   usageCount: 0,
   isSubscribed: false,
@@ -126,6 +176,14 @@ export default function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+  const [authStep, setAuthStep] = useState<'choose' | 'phone' | 'otp' | 'email'>('choose');
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpResendIn, setOtpResendIn] = useState(0);
+  const confirmationRef = useRef<ConfirmationResult | null>(null);
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+  const prevUsageRef = useRef<number | null>(null);
+  const inAppBrowser = detectInAppBrowser();
 
   // App navigation
   const [activeTab, setActiveTab] = useState<WorkspaceTab | 'optimize'>('terminal');
@@ -395,6 +453,16 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
+        // The server is the source of truth for free usage, not this browser.
+        if (typeof data.user?.usageCount === 'number') {
+          setQueryCount(data.user.usageCount);
+          localStorage.setItem('sarthavaha_query_count', String(data.user.usageCount));
+        }
+      } else if (res.status === 401 && auth.currentUser) {
+        // Expired ID token: refresh once before giving up on the session.
+        const fresh = await auth.currentUser.getIdToken(true);
+        localStorage.setItem('marketing_auth_token', fresh);
+        setToken(fresh);
       } else {
         // Token stale, clear session
         handleLogout();
@@ -867,138 +935,196 @@ export default function App() {
     triggerToast('Logged out of workspace session.', 'info');
   };
 
-  const handleAuthSubmit = async (e: React.FormEvent, signUpMode: boolean = isSignUp) => {
-    e.preventDefault();
+  /**
+   * Every sign-in method ends here: exchange the Firebase ID token with our server,
+   * which creates the account on first sign-in and records where the visitor came from.
+   */
+  const completeFirebaseSignIn = async (fbUser: FirebaseUser, method: SignUpMethod) => {
+    const idToken = await fbUser.getIdToken();
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+      body: JSON.stringify({ email: fbUser.email || undefined, attribution: getAttribution(), method })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'We couldn’t finish signing you in. Please try again.');
+    }
+
+    if (data.isNewUser) trackSignUp(method, data.user?.id);
+    else trackLogin(method, data.user?.id);
+
+    localStorage.setItem('marketing_auth_token', idToken);
+    localStorage.setItem('sarthavaha_started', 'true');
+    setToken(idToken);
+    setUser(data.user);
+    if (typeof data.user?.usageCount === 'number') {
+      setQueryCount(data.user.usageCount);
+      localStorage.setItem('sarthavaha_query_count', String(data.user.usageCount));
+    }
+    setHasStarted(true);
+    setShowDelayedSignup(false);
+    setAuthStep('choose');
+    setPhoneDigits('');
+    setOtpCode('');
+    setAuthEmail('');
+    setAuthPassword('');
+
+    // Run whatever the visitor was trying to do before we asked them to sign in.
+    if (interceptedAction) {
+      if (interceptedAction.type === 'chat') {
+        setActiveTab('terminal');
+        handleSendMessage(undefined, interceptedAction.payload.prompt);
+      } else if (interceptedAction.type === 'research') {
+        handleRunResearch(undefined, interceptedAction.payload);
+      } else if (interceptedAction.type === 'command') {
+        handleExecuteAgentCommand(undefined, interceptedAction.payload.command);
+      }
+      setInterceptedAction(null);
+    }
+
+    triggerToast(data.isNewUser ? 'Welcome to Sarthavaha. Your 5 free campaigns are ready.' : 'Signed in.', 'success');
+  };
+
+  const runAuth = async (fn: () => Promise<void>) => {
     setAuthError(null);
     setAuthLoading(true);
-
     try {
-      let idToken = '';
-      let userProfile: any = null;
-
-      if (signUpMode) {
-        // 1. Register user client-side via Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        const fbUser = userCredential.user;
-        idToken = await fbUser.getIdToken();
-
-        // 2. Synchronize user creation with the Express backend
-        const url = '/api/auth/signup';
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: authEmail, uid: fbUser.uid, token: idToken })
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || 'Database synchronization failed. Please try again.');
-        }
-        userProfile = data.user;
-        triggerToast('Account registered successfully via Firebase!', 'success');
-      } else {
-        // 1. Authenticate user client-side via Firebase Auth
-        const userCredential = await signInWithEmailAndPassword(auth, authEmail, authPassword);
-        const fbUser = userCredential.user;
-        idToken = await fbUser.getIdToken();
-
-        // 2. Retrieve user record and verify session with backend
-        const url = '/api/auth/login';
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`
-          },
-          body: JSON.stringify({ email: authEmail })
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || 'Authentication synchronization failed.');
-        }
-        userProfile = data.user;
-        triggerToast('Signed in successfully via Firebase!', 'success');
-      }
-
-      localStorage.setItem('marketing_auth_token', idToken);
-      localStorage.setItem('sarthavaha_started', 'true');
-      setToken(idToken);
-      setUser(userProfile);
-      setHasStarted(true);
-      setShowDelayedSignup(false);
-
-      // Process the intercepted action!
-      if (interceptedAction) {
-        if (interceptedAction.type === 'chat') {
-          handleSendMessage(undefined, interceptedAction.payload.prompt);
-        } else if (interceptedAction.type === 'research') {
-          handleRunResearch(undefined, interceptedAction.payload);
-        } else if (interceptedAction.type === 'command') {
-          handleExecuteAgentCommand(undefined, interceptedAction.payload.command);
-        }
-        setInterceptedAction(null);
-      }
-      
-      // Clean auth forms
-      setAuthEmail('');
-      setAuthPassword('');
+      await fn();
     } catch (err: any) {
-      setAuthError(err.message || 'Authentication failed. Please verify credentials.');
+      const message = authErrorMessage(err);
+      if (message) setAuthError(message);
     } finally {
       setAuthLoading(false);
     }
   };
 
+  const handleAuthSubmit = async (e: React.FormEvent, signUpMode: boolean = isSignUp) => {
+    e.preventDefault();
+    await runAuth(async () => {
+      const credential = signUpMode
+        ? await createUserWithEmailAndPassword(auth, authEmail, authPassword)
+        : await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      await completeFirebaseSignIn(credential.user, 'email');
+    });
+  };
+
   const handleGoogleSignIn = async () => {
-    setAuthError(null);
-    setAuthLoading(true);
-    try {
-      const userCredential = await signInWithPopup(auth, googleProvider);
-      const fbUser = userCredential.user;
-      const idToken = await fbUser.getIdToken();
-
-      // Retrieve/create user record in Sarthavaha backend
-      const url = '/api/auth/login';
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ email: fbUser.email })
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Google Authentication synchronization failed.');
-      }
-
-      localStorage.setItem('marketing_auth_token', idToken);
-      localStorage.setItem('sarthavaha_started', 'true');
-      setToken(idToken);
-      setUser(data.user);
-      setHasStarted(true);
-      setShowDelayedSignup(false);
-
-      // Process the intercepted action!
-      if (interceptedAction) {
-        if (interceptedAction.type === 'chat') {
-          handleSendMessage(undefined, interceptedAction.payload.prompt);
-        } else if (interceptedAction.type === 'research') {
-          handleRunResearch(undefined, interceptedAction.payload);
-        } else if (interceptedAction.type === 'command') {
-          handleExecuteAgentCommand(undefined, interceptedAction.payload.command);
+    await runAuth(async () => {
+      try {
+        const credential = await signInWithPopup(auth, googleProvider);
+        await completeFirebaseSignIn(credential.user, 'google');
+      } catch (err: any) {
+        // Some mobile browsers block popups; fall back to a full-page redirect.
+        if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/operation-not-supported-in-this-environment') {
+          localStorage.setItem('sarthavaha_pending_redirect', 'google');
+          await signInWithRedirect(auth, googleProvider);
+          return;
         }
-        setInterceptedAction(null);
+        throw err;
       }
+    });
+  };
 
-      triggerToast('Signed in successfully via Google!', 'success');
-    } catch (err: any) {
-      setAuthError(err.message || 'Google Authentication failed.');
-    } finally {
-      setAuthLoading(false);
+  // ---- Phone OTP (India first) ----
+  const getRecaptcha = () => {
+    if (!recaptchaRef.current) {
+      recaptchaRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', { size: 'invisible' });
     }
+    return recaptchaRef.current;
+  };
+
+  const handleSendOtp = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const digits = phoneDigits.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '');
+    if (!/^[6-9]\d{9}$/.test(digits)) {
+      setAuthError('Enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9.');
+      return;
+    }
+    await runAuth(async () => {
+      try {
+        confirmationRef.current = await signInWithPhoneNumber(auth, `+91${digits}`, getRecaptcha());
+      } catch (err) {
+        // A failed reCAPTCHA can't be reused; build a fresh one for the next try.
+        recaptchaRef.current?.clear();
+        recaptchaRef.current = null;
+        throw err;
+      }
+      setOtpCode('');
+      setAuthStep('otp');
+      setOtpResendIn(30);
+    });
+  };
+
+  const handleVerifyOtp = async (e?: React.FormEvent, codeOverride?: string) => {
+    e?.preventDefault();
+    const code = (codeOverride ?? otpCode).replace(/\D/g, '');
+    if (code.length !== 6 || !confirmationRef.current) {
+      setAuthError('Enter the 6-digit code from the SMS.');
+      return;
+    }
+    await runAuth(async () => {
+      const credential = await confirmationRef.current!.confirm(code);
+      await completeFirebaseSignIn(credential.user, 'phone');
+    });
+  };
+
+  // Resend countdown
+  useEffect(() => {
+    if (otpResendIn <= 0) return;
+    const t = setTimeout(() => setOtpResendIn(n => n - 1), 1000);
+    return () => clearTimeout(t);
+  }, [otpResendIn]);
+
+  // Finish a Google redirect sign-in after the page reloads.
+  useEffect(() => {
+    if (localStorage.getItem('sarthavaha_pending_redirect') !== 'google') return;
+    localStorage.removeItem('sarthavaha_pending_redirect');
+    getRedirectResult(auth)
+      .then(result => result?.user ? runAuth(() => completeFirebaseSignIn(result.user, 'google')) : undefined)
+      .catch(err => setAuthError(authErrorMessage(err)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Firebase ID tokens expire after an hour. Keep ours fresh so people aren't signed out mid-session.
+  useEffect(() => {
+    return onIdTokenChanged(auth, async fbUser => {
+      if (!fbUser) return;
+      const fresh = await fbUser.getIdToken();
+      const stored = localStorage.getItem('marketing_auth_token');
+      if (stored && stored !== fresh) {
+        localStorage.setItem('marketing_auth_token', fresh);
+        setToken(fresh);
+      }
+    });
+  }, []);
+
+  // first_query: the first time this account's usage goes from 0 to 1 or more.
+  useEffect(() => {
+    if (!token || !user || user.id === MOCK_GUEST_USER.id) return;
+    const prev = prevUsageRef.current;
+    if (prev === 0 && user.usageCount > 0) {
+      trackFirstQuery(user.id, activeTab);
+    }
+    prevUsageRef.current = user.usageCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.usageCount, user?.id, token]);
+
+  // Each time the sign-in sheet opens, start from the method picker (unless a code is on its way),
+  // and let Escape close it.
+  useEffect(() => {
+    if (!showDelayedSignup) return;
+    setAuthError(null);
+    setAuthStep(step => (step === 'otp' ? step : 'choose'));
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowDelayedSignup(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showDelayedSignup]);
+
+  const openSignIn = (step: 'choose' | 'email' = 'choose') => {
+    setAuthError(null);
+    setAuthStep(step);
+    setShowDelayedSignup(true);
   };
 
   // 2. Chat Service Handlers
@@ -2255,15 +2381,14 @@ export default function App() {
               <h4 className="font-bold text-white mb-3 text-[10px]">Company</h4>
               <ul className="space-y-2 text-[11px]">
                 <li><a href="#about" onClick={(e) => { e.preventDefault(); document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-cyan-400 transition">Ethereal Horizon</a></li>
-                <li><button onClick={() => triggerToast('Core cluster running at version S-1.8', 'info')} className="hover:text-cyan-400 text-left transition">System status</button></li>
-                <li><button onClick={() => triggerToast('Support portal active for all Sarthavaha Pro tiers.', 'info')} className="hover:text-cyan-400 text-left transition">Support</button></li>
+                <li><a href="mailto:support@sarthavaha.com" className="hover:text-cyan-400 transition">Support</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold text-white mb-3 text-[10px]">Legal</h4>
               <ul className="space-y-2 text-[11px]">
-                <li><button onClick={() => triggerToast('Terms of navigation are governed by Ethereal Horizon Corp standard agreements.', 'info')} className="hover:text-cyan-400 text-left transition">Terms</button></li>
-                <li><button onClick={() => triggerToast('Data structures are encrypted locally and stored securely on authorized servers.', 'info')} className="hover:text-cyan-400 text-left transition">Privacy</button></li>
+                <li><a href="/terms" className="hover:text-cyan-400 transition">Terms of service</a></li>
+                <li><a href="/privacy" className="hover:text-cyan-400 transition">Privacy policy</a></li>
               </ul>
             </div>
           </div>
@@ -3104,7 +3229,7 @@ export default function App() {
                           <Sparkles className="h-3 w-3" /> Sarthavaha Copilot
                         </div>
                         <h2 className="text-xl md:text-2xl font-bold font-sans tracking-tight text-white">
-                          Welcome to Sarthavaha Intelligence, <span className="font-mono text-purple-400">{(user?.email || 'guest@sarthavaha.io').split('@')[0]}</span>
+                          Welcome to Sarthavaha Intelligence, <span className="font-mono text-purple-400">{(user?.email || 'guest@sarthavaha.com').split('@')[0]}</span>
                         </h2>
                         <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
                           Execute target competitor analysis, craft premium visual copywriting hooks, evaluate ad budgets, and synchronize deployments direct to channels using Sarthavaha intelligence.
@@ -3702,6 +3827,56 @@ export default function App() {
 
 
               {/* ==================== AI CHATBOX TAB ==================== */}
+              {activeTab === 'terminal' && !token && (
+                <section aria-labelledby="guest-promise" className="mb-8 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center rounded-3xl border border-slate-800 bg-slate-900/60 px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
+                  <div className="lg:col-span-7">
+                    <h1 id="guest-promise" className="text-[2.1rem] leading-[1.05] sm:text-5xl font-extrabold tracking-[-0.035em] text-white max-w-[14ch]">
+                      Your complete ad campaign in seconds
+                    </h1>
+                    <p className="mt-4 text-base sm:text-lg text-slate-400 leading-relaxed max-w-[46ch]">
+                      Describe your business in one line. Get the headline, the audience and a daily budget, ready for Facebook and Google.
+                    </p>
+                    <div className="mt-7 flex flex-col sm:flex-row sm:items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => openSignIn()}
+                        className="h-12 px-6 rounded-xl bg-amber-400 hover:bg-amber-300 text-accent-ink font-bold text-[15px] flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Sparkles className="h-4.5 w-4.5" />
+                        Build my first campaign free
+                      </button>
+                      <span className="text-sm text-slate-500 sm:pl-2">5 free campaigns. Sign in with Google{PHONE_AUTH_ENABLED ? ' or your phone' : ''}.</span>
+                    </div>
+                  </div>
+
+                  {/* Sample output, so visitors see what they get before signing in */}
+                  <figure className="lg:col-span-5 w-full max-w-md lg:max-w-none mx-auto">
+                    <div className="rounded-2xl border border-slate-700/70 bg-slate-950 p-5 sm:p-6">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 bg-emerald-500/10 px-2.5 py-1 rounded-full">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                          Ready to launch
+                        </span>
+                        <span className="text-xs text-slate-500">Facebook &amp; Instagram</span>
+                      </div>
+                      <p className="mt-5 text-xs text-slate-500">Headline</p>
+                      <p className="mt-1 text-lg font-bold text-white leading-snug">Cold brew that beats the 3 pm slump. Delivered in Bengaluru.</p>
+                      <dl className="mt-4 divide-y divide-slate-800 border-t border-slate-800 text-sm">
+                        <div className="flex justify-between gap-4 py-3">
+                          <dt className="text-slate-500">Audience</dt>
+                          <dd className="text-slate-200 font-medium text-right">Office workers, 22–40, Bengaluru</dd>
+                        </div>
+                        <div className="flex justify-between items-baseline gap-4 py-3">
+                          <dt className="text-slate-500">Daily budget</dt>
+                          <dd className="text-2xl font-extrabold text-amber-300 tracking-tight">₹1,000<span className="text-sm font-medium text-slate-400"> / day</span></dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <figcaption className="mt-2.5 text-xs text-slate-500 text-center lg:text-left">Sample campaign for a coffee brand.</figcaption>
+                  </figure>
+                </section>
+              )}
+
               {activeTab === 'terminal' && (
                 <div className="flex flex-col lg:grid lg:grid-cols-4 gap-6 lg:h-[calc(100vh-12rem)] lg:min-h-[450px] h-auto">
                   
@@ -4111,12 +4286,13 @@ export default function App() {
                             </button>
                             <span className="text-slate-700 font-mono text-[10px]">|</span>
                             <button
-                              onClick={() => {
+                              onClick={async () => {
+                                const { exportCompetitiveIntelligenceReport } = await loadPdfExport();
                                 exportCompetitiveIntelligenceReport(
                                   researchNiche,
                                   researchAudience,
                                   researchOutput,
-                                  user?.email || 'guest@sarthavaha.io'
+                                  user?.email || 'guest@sarthavaha.com'
                                 );
                                 triggerToast('PDF Report downloaded successfully!', 'success');
                               }}
@@ -4967,7 +5143,8 @@ export default function App() {
                           </button>
                           <span className="text-slate-700 font-mono text-[10px]">|</span>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              const { exportCampaignDiagnosticReport } = await loadPdfExport();
                               exportCampaignDiagnosticReport(
                                 optPlatform,
                                 optSpend,
@@ -4976,7 +5153,7 @@ export default function App() {
                                 optConversions,
                                 optResult.metrics,
                                 optResult.analysis,
-                                user?.email || 'guest@sarthavaha.io'
+                                user?.email || 'guest@sarthavaha.com'
                               );
                               triggerToast('PDF Report downloaded successfully!', 'success');
                             }}
@@ -5120,12 +5297,55 @@ export default function App() {
                         </button>
                       </div>
 
+                      {/* Sign-ups by source (from UTM tags or referrer, recorded at account creation) */}
+                      {(() => {
+                        type SourceRow = { total: number; activated: number; paid: number };
+                        const bySource = new Map<string, SourceRow>();
+                        for (const u of adminUsers) {
+                          if (u.role === 'admin') continue;
+                          const key = `${u.signupSource || '(unknown)'}${u.signupCampaign && u.signupCampaign !== '(not set)' ? ` / ${u.signupCampaign}` : ''}`;
+                          const row = bySource.get(key) || { total: 0, activated: 0, paid: 0 };
+                          row.total += 1;
+                          if (u.usageCount > 0) row.activated += 1;
+                          if (u.isSubscribed) row.paid += 1;
+                          bySource.set(key, row);
+                        }
+                        const rows = [...bySource.entries()].sort((x, y) => y[1].total - x[1].total);
+                        if (rows.length === 0) return null;
+                        return (
+                          <div className="rounded-xl border border-slate-800 overflow-hidden">
+                            <p className="px-4 pt-3 pb-2 text-[13px] font-semibold text-white">Sign-ups by source</p>
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="text-slate-500 border-b border-slate-800">
+                                  <th className="px-4 py-2 font-medium">Source / campaign</th>
+                                  <th className="px-4 py-2 font-medium text-right">Sign-ups</th>
+                                  <th className="px-4 py-2 font-medium text-right">Ran a query</th>
+                                  <th className="px-4 py-2 font-medium text-right">Paid</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-850">
+                                {rows.map(([key, v]) => (
+                                  <tr key={key}>
+                                    <td className="px-4 py-2 text-slate-200">{key}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-slate-200">{v.total}</td>
+                                    <td className="px-4 py-2 text-right font-mono text-slate-400">{v.activated} <span className="text-slate-600">({Math.round((v.activated / v.total) * 100)}%)</span></td>
+                                    <td className="px-4 py-2 text-right font-mono text-slate-400">{v.paid}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
+
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">
                           <thead>
                             <tr className="bg-slate-950 border-b border-slate-850 text-slate-400 font-bold">
-                              <th className="p-3 font-mono text-[10px]">Email</th>
-                              <th className="p-3 font-mono text-[10px]">ROLE</th>
+                              <th className="p-3 font-mono text-[10px]">Email or phone</th>
+                              <th className="p-3 font-mono text-[10px]">Source</th>
+                              <th className="p-3 font-mono text-[10px]">Role</th>
                               <th className="p-3 font-mono text-[10px]">Generations</th>
                               <th className="p-3 font-mono text-[10px]">Subscribed</th>
                               <th className="p-3 font-mono text-[10px]">Plan</th>
@@ -5135,14 +5355,15 @@ export default function App() {
                           <tbody className="divide-y divide-slate-850">
                             {adminUsers.map((u) => (
                               <tr key={u.id} className="hover:bg-slate-950/40">
-                                <td className="p-3 font-medium text-slate-200 font-mono text-[11px]">{u.email}</td>
+                                <td className="p-3 font-medium text-slate-200 font-mono text-[11px]">{u.phoneNumber || u.email}</td>
+                                <td className="p-3 text-slate-400 text-[11px]">{u.signupSource || '—'}{u.signupMethod ? <span className="text-slate-600"> via {u.signupMethod}</span> : null}</td>
                                 <td className="p-3">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
                                     u.role === 'admin' 
                                       ? 'bg-rose-500/15 text-rose-400 border border-rose-500/20' 
                                       : 'bg-slate-950 text-slate-400 border border-slate-850'
                                   }`}>
-                                    {u.role.toUpperCase()}
+                                    {u.role}
                                   </span>
                                 </td>
                                 <td className="p-3 text-slate-300">{u.usageCount} <span className="text-[10px] text-slate-500">/ 5 used</span></td>
@@ -5797,7 +6018,12 @@ const client = new GoogleAdsApi({
           <footer className={`mt-16 pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-[12px] text-slate-500 ${
             isWhite ? 'border-slate-200' : 'border-slate-800/70'
           }`}>
-            <span>Sarthavaha by Ethereal Horizon, © {new Date().getFullYear()}</span>
+            <span className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+              <span>Sarthavaha by Ethereal Horizon, © {new Date().getFullYear()}</span>
+              <a href="/privacy" className="hover:text-white">Privacy</a>
+              <a href="/terms" className="hover:text-white">Terms</a>
+              <a href="mailto:support@sarthavaha.com" className="hover:text-white">Support</a>
+            </span>
             <button
               type="button"
               onClick={() => setIsThemeModalOpen(true)}
@@ -5837,105 +6063,259 @@ const client = new GoogleAdsApi({
         })}
       </nav>
 
-      {/* DELAYED SIGN-UP / AUTH HUB INTERCEPT MODAL */}
+      {/* Invisible reCAPTCHA used by phone OTP; must stay mounted */}
+      <div id="recaptcha-container" />
+
+      {/* SIGN-IN SHEET: bottom sheet on phones, dialog on larger screens */}
       {showDelayedSignup && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl flex items-center justify-center p-4 z-50 animate-fade-in">
+        <div
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 z-50"
+          onClick={(e) => { if (e.target === e.currentTarget && !authLoading) setShowDelayedSignup(false); }}
+        >
           <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="w-full max-w-md bg-slate-900 border border-cyan-500/30 rounded-2xl p-6 shadow-[0_0_50px_rgba(229,150,28,0.2)] relative"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="signin-title"
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.2 }}
+            className="w-full sm:max-w-sm bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl px-5 pt-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6 relative max-h-[92dvh] overflow-y-auto"
           >
-            <div className="text-center mb-6">
-              <span className="text-[10px] text-cyan-400 font-mono">
-                {interceptedAction ? 'Action Pending Authorization' : 'Sarthavaha Command Hub'}
-              </span>
-              <h3 className="text-xl font-bold text-white mt-1">
-                {isSignUp ? 'Create Account / Register' : 'Sign In to Workspace'}
-              </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                {isSignUp 
-                  ? 'Please register your free Sarthavaha profile to secure your AI campaign data.'
-                  : 'Access your campaign optimization command and stored creatives.'}
-              </p>
-            </div>
-
-            <form
-              onSubmit={(e) => handleAuthSubmit(e)}
-              className="space-y-4"
-            >
+            <div className="flex items-start justify-between gap-4 mb-5">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
-                <input
-                  type="email"
-                  required
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition text-sm"
-                  placeholder="ashutosh@company.com"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                />
+                <BrandMark size={32} className="text-marigold-400 mb-3" />
+                <h3 id="signin-title" className="text-xl font-bold text-white leading-tight">
+                  {interceptedAction ? 'Sign in to see your campaign' : 'Sign in to Sarthavaha'}
+                </h3>
+                <p className="text-sm text-slate-400 mt-1">Your first 5 campaigns are free. No card needed.</p>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Password</label>
-                <input
-                  type="password"
-                  required
-                  className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition text-sm"
-                  placeholder="Minimum 6 characters"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                />
-              </div>
-
-              {authError && <p className="text-xs text-rose-400 font-mono text-center">{authError}</p>}
-
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full py-3 bg-gradient-to-r from-cyan-500 to-indigo-500 text-accent-ink font-bold rounded-lg text-xs shadow-lg hover:brightness-110 active:scale-[0.98] transition-all cursor-pointer"
-              >
-                {authLoading 
-                  ? (isSignUp ? 'Creating Profile...' : 'Authenticating...') 
-                  : (isSignUp ? 'Create Account & Execute' : 'Sign In & Access')}
-              </button>
-
-              <div className="relative my-4 flex items-center justify-center">
-                <span className="absolute w-full border-t border-slate-800"></span>
-                <span className="relative bg-slate-900 px-3 text-[10px] text-slate-500 font-mono">or continue with</span>
-              </div>
-
               <button
                 type="button"
-                onClick={handleGoogleSignIn}
+                onClick={() => setShowDelayedSignup(false)}
                 disabled={authLoading}
-                className="w-full py-2.5 bg-slate-950 border border-slate-850 hover:bg-slate-900 text-slate-200 font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer transition-all animate-fade-in"
+                aria-label="Close"
+                className="h-11 w-11 -mr-2 -mt-1 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24">
-                  <path fill="currentColor" d="M12.24 10.285V13.4h6.887C18.2 15.614 15.645 18 12.24 18c-3.86 0-7-3.14-7-7s3.14-7 7-7c1.73 0 3.3.63 4.52 1.667l2.42-2.42C17.41 1.623 14.965 1 12.24 1c-5.52 0-10 4.48-10 10s4.48 10 10 10c5.773 0 9.6-4.06 9.6-9.76 0-.66-.06-1.155-.16-1.655h-9.44z" />
-                </svg>
-                <span>Google Account</span>
-              </button>
-            </form>
-
-            <div className="mt-4 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setAuthError(null);
-                }}
-                className="text-xs text-cyan-400 hover:text-cyan-300 font-medium transition cursor-pointer"
-              >
-                {isSignUp ? 'Already have an account? Sign In' : 'Need a command profile? Register New Account'}
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <button
-              onClick={() => setShowDelayedSignup(false)}
-              className="w-full text-center text-xs text-slate-500 hover:text-slate-400 mt-4 transition cursor-pointer"
-            >
-              Cancel request and return
-            </button>
+            {authStep === 'choose' && (
+              <div className="space-y-3">
+                {inAppBrowser.inApp && (
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3.5 text-[13px] text-amber-100 leading-snug">
+                    <p className="font-semibold text-amber-200">Google sign-in doesn’t work inside {inAppBrowser.app}.</p>
+                    <p className="mt-1 text-amber-100/80">
+                      {PHONE_AUTH_ENABLED ? 'Use your phone number below, or open' : 'Open'} this page in {inAppBrowser.android ? 'Chrome' : 'Safari'}{inAppBrowser.android ? '.' : ': tap ••• and choose “Open in browser”.'}
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      {inAppBrowser.android && (
+                        <a
+                          href={`intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;package=com.android.chrome;end`}
+                          className="px-3 py-1.5 rounded-lg bg-amber-400 text-accent-ink font-bold text-xs"
+                        >
+                          Open in Chrome
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard?.writeText(location.href); triggerToast('Link copied', 'success'); }}
+                        className="px-3 py-1.5 rounded-lg border border-amber-400/40 text-amber-100 font-semibold text-xs cursor-pointer"
+                      >
+                        Copy link
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {PHONE_AUTH_ENABLED && inAppBrowser.inApp && (
+                  <button
+                    type="button"
+                    onClick={() => { setAuthError(null); setAuthStep('phone'); }}
+                    className="w-full h-12 rounded-xl bg-amber-400 hover:bg-amber-300 text-accent-ink font-bold text-[15px] flex items-center justify-center gap-2.5 transition cursor-pointer"
+                  >
+                    <Phone className="h-4.5 w-4.5" />
+                    Continue with phone number
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={authLoading}
+                  className="w-full h-12 rounded-xl bg-white hover:bg-slate-100 text-[#1f1f1f] font-semibold text-[15px] flex items-center justify-center gap-3 transition cursor-pointer disabled:opacity-60"
+                >
+                  {authLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+                    <svg className="h-5 w-5" viewBox="0 0 48 48" aria-hidden="true">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    </svg>
+                  )}
+                  Continue with Google
+                </button>
+
+                {PHONE_AUTH_ENABLED && !inAppBrowser.inApp && (
+                  <button
+                    type="button"
+                    onClick={() => { setAuthError(null); setAuthStep('phone'); }}
+                    className="w-full h-12 rounded-xl border border-slate-700 hover:border-slate-500 text-white font-semibold text-[15px] flex items-center justify-center gap-2.5 transition cursor-pointer"
+                  >
+                    <Phone className="h-4.5 w-4.5" />
+                    Continue with phone number
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => { setAuthError(null); setAuthStep('email'); }}
+                  className="w-full h-11 text-[14px] text-slate-400 hover:text-white font-medium transition cursor-pointer"
+                >
+                  Use email and password instead
+                </button>
+              </div>
+            )}
+
+            {authStep === 'phone' && (
+              <form onSubmit={handleSendOtp} className="space-y-4" noValidate>
+                <div>
+                  <label htmlFor="signin-phone" className="block text-sm font-semibold text-slate-300 mb-2">Mobile number</label>
+                  <div className="flex items-stretch rounded-xl border border-slate-700 bg-slate-950 focus-within:border-amber-400 transition">
+                    <span className="flex items-center pl-4 pr-3 text-[17px] text-slate-400 border-r border-slate-800 select-none">+91</span>
+                    <input
+                      id="signin-phone"
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel-national"
+                      autoFocus
+                      maxLength={12}
+                      className="flex-1 min-w-0 bg-transparent px-3 h-12 text-[17px] tracking-wide text-white outline-none placeholder:text-slate-600"
+                      placeholder="98765 43210"
+                      value={phoneDigits}
+                      onChange={(e) => setPhoneDigits(e.target.value.replace(/[^\d ]/g, ''))}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">We’ll text you a 6-digit code.</p>
+                </div>
+                {authError && <p role="alert" className="text-sm text-rose-400">{authError}</p>}
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full h-12 rounded-xl bg-amber-400 hover:bg-amber-300 text-accent-ink font-bold text-[15px] flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+                >
+                  {authLoading && <Loader2 className="h-4.5 w-4.5 animate-spin" />}
+                  {authLoading ? 'Sending code…' : 'Send code'}
+                </button>
+                <button type="button" onClick={() => { setAuthError(null); setAuthStep('choose'); }} className="w-full h-11 text-[14px] text-slate-400 hover:text-white transition cursor-pointer">
+                  Other ways to sign in
+                </button>
+              </form>
+            )}
+
+            {authStep === 'otp' && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4" noValidate>
+                <div>
+                  <label htmlFor="signin-otp" className="block text-sm font-semibold text-slate-300 mb-1">Enter the code</label>
+                  <p className="text-xs text-slate-500 mb-3">Sent by SMS to +91 {phoneDigits.replace(/\D/g, '').slice(-10).replace(/(\d{5})(\d{5})/, '$1 $2')}</p>
+                  <input
+                    id="signin-otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    className="w-full h-14 rounded-xl border border-slate-700 bg-slate-950 focus:border-amber-400 px-4 text-center text-2xl font-mono tracking-[0.5em] text-white outline-none placeholder:text-slate-700 transition"
+                    placeholder="••••••"
+                    value={otpCode}
+                    onChange={(e) => {
+                      const code = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setOtpCode(code);
+                      if (code.length === 6 && !authLoading) handleVerifyOtp(undefined, code);
+                    }}
+                  />
+                </div>
+                {authError && <p role="alert" className="text-sm text-rose-400">{authError}</p>}
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full h-12 rounded-xl bg-amber-400 hover:bg-amber-300 text-accent-ink font-bold text-[15px] flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+                >
+                  {authLoading && <Loader2 className="h-4.5 w-4.5 animate-spin" />}
+                  {authLoading ? 'Checking…' : 'Verify and continue'}
+                </button>
+                <div className="flex justify-between text-[14px] [&>button]:min-h-11 [&>button]:px-1">
+                  <button type="button" onClick={() => { setAuthError(null); setAuthStep('phone'); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                    Change number
+                  </button>
+                  <button
+                    type="button"
+                    disabled={otpResendIn > 0 || authLoading}
+                    onClick={() => handleSendOtp()}
+                    className="text-amber-300 hover:text-amber-200 disabled:text-slate-500 transition cursor-pointer disabled:cursor-default"
+                  >
+                    {otpResendIn > 0 ? `Resend in 0:${String(otpResendIn).padStart(2, '0')}` : 'Resend code'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {authStep === 'email' && (
+              <form onSubmit={(e) => handleAuthSubmit(e)} className="space-y-3">
+                <div>
+                  <label htmlFor="signin-email" className="block text-sm font-semibold text-slate-300 mb-1.5">Email</label>
+                  <input
+                    id="signin-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    className="w-full h-12 px-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-amber-400 transition text-[15px]"
+                    placeholder="you@company.com"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="signin-password" className="block text-sm font-semibold text-slate-300 mb-1.5">Password</label>
+                  <input
+                    id="signin-password"
+                    type="password"
+                    required
+                    minLength={6}
+                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                    className="w-full h-12 px-4 bg-slate-950 border border-slate-700 rounded-xl text-white outline-none focus:border-amber-400 transition text-[15px]"
+                    placeholder={isSignUp ? 'At least 6 characters' : ''}
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                  />
+                </div>
+                {authError && <p role="alert" className="text-sm text-rose-400">{authError}</p>}
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full h-12 rounded-xl bg-amber-400 hover:bg-amber-300 text-accent-ink font-bold text-[15px] flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+                >
+                  {authLoading && <Loader2 className="h-4.5 w-4.5 animate-spin" />}
+                  {isSignUp ? 'Create account' : 'Sign in'}
+                </button>
+                <div className="flex justify-between text-[14px] [&>button]:min-h-11 [&>button]:px-1">
+                  <button type="button" onClick={() => { setAuthError(null); setAuthStep('choose'); }} className="text-slate-400 hover:text-white transition cursor-pointer">
+                    Other ways to sign in
+                  </button>
+                  <button type="button" onClick={() => { setIsSignUp(!isSignUp); setAuthError(null); }} className="text-amber-300 hover:text-amber-200 transition cursor-pointer">
+                    {isSignUp ? 'I have an account' : 'Create an account'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {authStep === 'choose' && authError && <p role="alert" className="text-sm text-rose-400 mt-3">{authError}</p>}
+
+            <p className="text-[12px] text-slate-500 mt-5 leading-relaxed">
+              By continuing you agree to our{' '}
+              <a href="/terms" target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-white">Terms</a> and{' '}
+              <a href="/privacy" target="_blank" rel="noopener" className="underline underline-offset-2 hover:text-white">Privacy Policy</a>.
+            </p>
           </motion.div>
         </div>
       )}
