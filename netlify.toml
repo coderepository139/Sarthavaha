@@ -1,6 +1,8 @@
-# Netlify serves the React front end as a static site.
-# The Express API (server.ts: sign-in, Gemini, rate limits) does NOT run on Netlify;
-# it needs a Node host (e.g. Cloud Run / AI Studio). Point /api/* at it below.
+# Netlify hosts everything:
+#   /            the Sarthavaha home page (React, built by Vite into dist/)
+#   /console/    the AdPilot console (public/console, copied into dist/ by Vite)
+#   /api/*       the AdPilot API as Netlify Functions (netlify/functions, code in adpilot/server)
+# Data and sign-in use the Firebase project in firebase-applet-config.json.
 
 [build]
   command = "npx vite build"
@@ -9,14 +11,19 @@
 [build.environment]
   NODE_VERSION = "22"
 
-# Uncomment and set your API server's URL so sign-in and AI features work:
-# [[redirects]]
-#   from = "/api/*"
-#   to = "https://YOUR-API-HOST/api/:splat"
-#   status = 200
-#   force = true
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  # Ship firebase-admin as a normal package: Firestore loads protocol files at runtime.
+  external_node_modules = ["firebase-admin"]
 
-# Single-page app: /privacy, /terms and any other path load index.html
+# The console is its own single-page app; its pages use #hash routes.
+[[redirects]]
+  from = "/console/*"
+  to = "/console/index.html"
+  status = 200
+
+# Sarthavaha single-page app: /privacy, /terms and any other path load index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"

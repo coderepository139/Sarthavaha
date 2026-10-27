@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AdPilot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233987e5'/><path d='M8 22l6-12 4 8 3-5 3 9' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
+  <link rel="stylesheet" href="/console/styles.css" />
+</head>
+<body>
+  <div id="login" class="login hidden">
+    <div id="login-form" class="card login-card">
+      <div class="brand"><span class="logo"></span>AdPilot</div>
+      <p class="muted">AI agent that creates, launches and monitors your ad campaigns. 5 campaigns free, then ₹999/month.</p>
+      <button type="button" class="btn google" id="login-google">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+        Continue with Google
+      </button>
+      <p class="muted small-text" id="login-divider">New here? Continuing with Google creates your account.</p>
+      <form id="login-dev-form" class="form hidden" novalidate>
+        <p id="login-dev" class="muted small-text hidden">Dev mode: Firebase isn't configured, so any email signs in without a password.</p>
+        <input type="email" name="email" placeholder="Email" autocomplete="email" required />
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+      <p id="login-error" class="error" role="status"></p>
+    </div>
+  </div>
+
+  <div id="app" class="layout hidden">
+    <aside class="sidebar">
+      <a class="brand" href="/" title="Sarthavaha home"><span class="logo"></span>AdPilot</a>
+      <nav id="nav">
+        <a data-view="dashboard">Dashboard</a>
+        <a data-view="agent">AI Agent</a>
+        <a data-view="campaigns">Campaigns</a>
+        <a data-view="approvals">Approvals <span id="approval-badge" class="badge hidden"></span></a>
+        <a data-view="rules">Monitor rules</a>
+        <a data-view="connections">Connections</a>
+        <a data-view="activity">Activity</a>
+        <a data-view="billing">Billing</a>
+        <a data-view="settings">Settings</a>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="plan-pill" class="pill"></span>
+        <span id="autopilot-pill" class="pill"></span>
+        <div id="user-email" class="muted small-text" style="overflow:hidden;text-overflow:ellipsis"></div>
+        <button id="logout" class="btn ghost small">Log out</button>
+      </div>
+    </aside>
+    <main id="main"></main>
+  </div>
+
+  <div id="modal" class="modal hidden"><div class="card modal-card" id="modal-body"></div></div>
+  <div id="toast" class="toast hidden"></div>
+  <script type="module" src="/console/app.js"></script>
+</body>
+</html>
